@@ -16,7 +16,7 @@ systemctl disable zivpn 2>/dev/null
 rm -f /etc/systemd/system/zivpn.service
 systemctl daemon-reload
 
-# 2. Menghapus Cron Job Daemon Pemantau IP
+# 2. Menghapus Cron Job Daemon Pemantau IP & Quota
 echo "➜ Menghapus Background Cron Auto-Lock Daemon..."
 crontab -l 2>/dev/null | grep -v "/usr/bin/cron-zivpn" | crontab -
 rm -f /usr/bin/cron-zivpn
