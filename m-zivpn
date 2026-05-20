@@ -1,14 +1,14 @@
 #!/bin/bash
 # =========================================================
 # PREMIUM INTERACTIVE INTERFACE MENU MANAGER V4 HYBRID
-# Location: /usr/bin/m-zivpn
+# Location: m-zivpn (Simpan & upload ke GitHub maseee)
 # =========================================================
 
 DB_JSON="/etc/limit/zivpn/database.json"
 
-# Fungsi pembantu untuk konversi byte ke GB/MB yang readable
 format_bytes() {
     local bytes=$1
+    if [ -z "$bytes" ] || [ "$bytes" -lt 0 ] 2>/dev/null; then bytes=0; fi
     if (( bytes >= 1073741824 )); then
         echo -e "$(printf "%.2f" $(echo "scale=2; $bytes/1073741824" | bc)) GB"
     elif (( bytes >= 1048576 )); then
@@ -18,37 +18,32 @@ format_bytes() {
     fi
 }
 
-# Fungsi pembantu Dual-Input (Mengembalikan username valid)
 select_user_hybrid() {
     local prompt_msg=$1
     if [ ! -f "$DB_JSON" ] || [ "$(jq 'keys | length' $DB_JSON 2>/dev/null)" -eq 0 ]; then
-        echo "EMPTY"
-        return
+        echo "EMPTY"; return
     fi
-
     mapfile -t user_list < <(jq -r 'keys[]' "$DB_JSON" 2>/dev/null)
-    
     echo -e "No.  Username       Status        Expired"
     echo -e "──────────────────────────────────────────────────"
     for i in "${!user_list[@]}"; do
         status=$(jq -r --arg u "${user_list[$i]}" '.[$u].status' "$DB_JSON")
         exp=$(jq -r --arg u "${user_list[$i]}" '.[$u].expired_date' "$DB_JSON")
-        
-        # Pewarnaan status
-        if [[ "$status" == "ACTIVE" ]]; then status_col="\033[1;32m$status\033[0m"; else status_col="\033[1;31m$status\033[0m"; fi
-        
+        if [[ "$status" == "ACTIVE" ]]; then
+            status_col="\033[1;32m$status\033[0m"
+        else
+            status_col="\033[1;31m$status\033[0m"
+        fi
         printf " [%02d] %-14s %-22b %s\n" "$((i+1))" "${user_list[$i]}" "$status_col" "$exp"
     done
     echo -e "──────────────────────────────────────────────────"
     read -p "$prompt_msg" target_input
-    
     local selected_user=""
     if [[ "$target_input" =~ ^[0-9]+$ ]] && [ "$target_input" -le "${#user_list[@]}" ] && [ "$target_input" -gt 0 ]; then
         selected_user="${user_list[$((target_input-1))]}"
     else
         selected_user=$(echo "$target_input" | tr -d '[:space:]')
     fi
-    
     if [[ -z "$selected_user" ]] || ! jq -e --arg u "$selected_user" '.[$u]' "$DB_JSON" >/dev/null 2>&1; then
         echo "NOT_FOUND"
     else
@@ -57,255 +52,150 @@ select_user_hybrid() {
 }
 
 clear
-echo -e "\033[1;36m──────────────────────────────────────\033[0m"
-echo -e "\033[1;33m         PREMIUM ZIVPN MANAGER        \033[0m"
-echo -e "\033[1;36m──────────────────────────────────────\033[0m"
-echo -e " Engine : \033[1;92mHybrid Core V4 Full Dual-Input\033[0m"
-echo -e "\033[1;36m──────────────────────────────────────\033[0m"
-echo -e " \033[1;33m[01]\033[0m Create Account Premium"
-echo -e " \033[1;33m[02]\033[0m Trial Account"
-echo -e " \033[1;33m[03]\033[0m Renew Account"
-echo -e " \033[1;33m[04]\033[0m Delete Account"
-echo -e "\033[1;36m ──────────────────────────────────────\033[0m"
-echo -e " \033[1;33m[05]\033[0m Check Login"
-echo -e " \033[1;33m[06]\033[0m List Member"
-echo -e " \033[1;33m[07]\033[0m Delete Expired"
-echo -e " \033[1;33m[08]\033[0m Lock Account"
-echo -e " \033[1;33m[09]\033[0m Unlock Account"
-echo -e " \033[1;33m[10]\033[0m List User Locked"
-echo -e "\033[1;36m ──────────────────────────────────────\033[0m"
-echo -e " \033[1;33m[11]\033[0m Detail Account"
-echo -e " \033[1;33m[12]\033[0m Change Limit IP"
-echo -e " \033[1;33m[13]\033[0m Change Limit Quota"
-echo -e " \033[1;33m[00]\033[0m Keluar (Exit)"
-echo -e "\033[1;36m──────────────────────────────────────\033[0m"
-read -p " Pilih Menu : " menu_choice
+echo -e "\033[1;36m──────────────────────────────────────────────────\033[0m"
+echo -e "\033[1;33m          MENU UTAMA PREMIUM ZIVPN MANAGER        \033[0m"
+echo -e "\033[1;36m──────────────────────────────────────────────────\033[0m"
+echo -e " \033[1;33m[01]\033[0m Buat Akun Premium Kustom (Add Advanced User)"
+echo -e " \033[1;33m[02]\033[0m Buat Akun Trial (Default 1 Hari, 2 IP, 10GB)"
+echo -e " \033[1;33m[03]\033[0m Perpanjang Masa Aktif Akun (Renew User)"
+echo -e " \033[1;33m[04]\033[0m Hapus Akun Terdaftar (Delete User)"
+echo -e "\033[1;36m ──────────────────────────────────────────────────\033[0m"
+echo -e " \033[1;33m[05]\033[0m Tampilkan Seluruh Member (List Users)"
+echo -e " \033[1;33m[06]\033[0m Detail Informasi Akun (Cek Kuota & Limit IP)"
+echo -e " \033[1;33m[07]\033[0m Ubah Batasan Multi-IP Akun (Change Limit IP)"
+echo -e " \033[1;33m[08]\033[0m Ubah Batasan Kuota Data (Change Limit Quota)"
+echo -e " \033[1;33m[09]\033[0m Kunci / Blokir Akun Sementara (Lock Account)"
+echo -e " \033[1;33m[10]\033[0m Buka Kunci / Unbanned Akun (Unlock Account)"
+echo -e " \033[1;33m[11]\033[0m Bersihkan Semua Akun Expired (Clear Expired)"
+echo -e " \033[1;33m[12]\033[0m Cek Status Service Core ZIVPN"
+echo -e " \033[1;33m[00]\033[0m Keluar Aplikasi (Exit)"
+echo -e "\033[1;36m──────────────────────────────────────────────────\033[0m"
+read -p " Pilihan maseee [01-12] : " menu_choice
 
 case "$menu_choice" in
     01|1)
         clear
         echo -e "\033[1;36m==================================================\033[0m"
-        echo -e "\033[1;33m               CREATE PREMIUM ACCOUNT             \033[0m"
+        echo -e "\033[1;33m             BUAT AKUN PREMIUM CUSTOM             \033[0m"
         echo -e "\033[1;36m==================================================\033[0m"
-        read -p " ➜ Masukkan Username: " username
+        read -p " ➜ Masukkan Username Baru : " username
         username=$(echo "$username" | tr -d '[:space:]')
-        if [[ -z "$username" ]]; then echo "❌ Username kosong!"; exit 1; fi
+        if [ -z "$username" ]; then echo "❌ Gagal: Username kosong!"; exit 1; fi
         
-        read -p " ➜ Durasi Aktif (Hari): " masa_aktif
+        read -p " ➜ Durasi Masa Aktif (Hari): " masa_aktif
         if [[ ! "$masa_aktif" =~ ^[0-9]+$ ]]; then masa_aktif=30; fi
         
-        /usr/local/bin/mzivpn add "$username" "$masa_aktif"
+        read -p " ➜ Batasan Multi-IP (Device): " limit_ip
+        if [[ ! "$limit_ip" =~ ^[0-9]+$ ]]; then limit_ip=2; fi
+        
+        read -p " ➜ Total Limit Kuota Data (GB): " limit_gb
+        if [[ ! "$limit_gb" =~ ^[0-9]+$ ]]; then limit_gb=10; fi
+        
+        /usr/local/bin/mzivpn add "$username" "$masa_aktif" "$limit_ip" "$limit_gb"
         systemctl restart zivpn >/dev/null 2>&1
-        echo -e "\033[1;92m✔ Akun Premium '$username' aktif $masa_aktif hari sukses dibuat!\033[0m"
+        echo -e "\033[1;92m✔ Sukses: User '$username' Aktif $masa_aktif Hari, Limit $limit_ip IP, Kuota $limit_gb GB!\033[0m"
         ;;
         
     02|2)
         clear
-        echo -e "\033[1;36m==================================================\033[0m"
-        echo -e "\033[1;33m                 CREATE TRIAL ACCOUNT             \033[0m"
-        echo -e "\033[1;36m==================================================\033[0m"
         trial_user="trial$(echo $RANDOM | cut -c1-3)"
-        echo -e " ➜ Generate Username Otomatis: $trial_user"
-        
-        # Trial default 1 hari (bisa disesuaikan lewat argumen kedua)
-        /usr/local/bin/mzivpn add "$trial_user" "1"
+        /usr/local/bin/mzivpn add "$trial_user" "1" "2" "10"
         systemctl restart zivpn >/dev/null 2>&1
-        echo -e "\033[1;92m✔ Akun Trial '$trial_user' Berhasil Dibuat (1 Hari)!\033[0m"
+        echo -e "\033[1;92m✔ Akun Trial Dibuat: '$trial_user' (1 Hari, 2 IP, 10GB Data)!\033[0m"
         ;;
         
     03|3)
         clear
-        echo -e "\033[1;36m==================================================\033[0m"
-        echo -e "\033[1;33m                 RENEW ACCOUNT SYSTEM             \033[0m"
-        echo -e "\033[1;36m==================================================\033[0m"
-        user_target=$(select_user_hybrid " ➜ Masukkan Nomor atau Nama Akun yang di-renew: ")
-        
-        if [[ "$user_target" == "EMPTY" ]]; then echo "❌ Database kosong."; exit 1; fi
-        if [[ "$user_target" == "NOT_FOUND" ]]; then echo "❌ Akun tidak ditemukan."; exit 1; fi
-        
-        read -p " ➜ Tambah Durasi (Hari): " tambah_hari
-        if [[ ! "$tambah_hari" =~ ^[0-9]+$ ]]; then echo "❌ Input hari salah."; exit 1; fi
-        
+        user_target=$(select_user_hybrid " ➜ Masukkan Nomor atau Nama Akun: ")
+        if [[ "$user_target" == "EMPTY" || "$user_target" == "NOT_FOUND" ]]; then echo "❌ Masalah Database/User."; exit 1; fi
+        read -p " ➜ Tambah Waktu (Hari): " tambah_hari
         /usr/local/bin/mzivpn renew "$user_target" "$tambah_hari"
         systemctl restart zivpn >/dev/null 2>&1
-        echo -e "\033[1;92m✔ Akun '$user_target' berhasil diperpanjang $tambah_hari hari!\033[0m"
+        echo "✔ Akun diperpanjang!"
         ;;
         
     04|4)
         clear
-        echo -e "\033[1;36m==================================================\033[0m"
-        echo -e "\033[1;31m                 DELETE ACCOUNT SYSTEM            \033[0m"
-        echo -e "\033[1;36m==================================================\033[0m"
-        user_target=$(select_user_hybrid " ➜ Masukkan Nomor atau Nama Akun yang dihapus: ")
-        
-        if [[ "$user_target" == "EMPTY" ]]; then echo "❌ Database kosong."; exit 1; fi
-        if [[ "$user_target" == "NOT_FOUND" ]]; then echo "❌ Akun tidak ditemukan."; exit 1; fi
-        
+        user_target=$(select_user_hybrid " ➜ Hapus Akun Nomor/Nama: ")
         /usr/local/bin/mzivpn del "$user_target"
         systemctl restart zivpn >/dev/null 2>&1
-        echo -e "\033[1;92m✔ Akun $user_target sukses dihapus dari sistem!\033[0m"
+        echo "✔ Dicabut!"
         ;;
         
     05|5)
         clear
-        echo -e "\033[1;36m==================================================\033[0m"
-        echo -e "\033[1;32m               CHECK LOGIN USER REALTIME          \033[0m"
-        echo -e "\033[1;36m==================================================\033[0m"
-        echo -e "Menampilkan log koneksi aktif server ZIVPN..."
-        echo -e "--------------------------------------------------"
-        # Membaca dump koneksi aktif dari journalctl systemd service zivpn
-        journalctl -u zivpn --since "1 hour ago" | grep -Ei "authenticated|remote|connect|join" | tail -n 20
-        echo -e "--------------------------------------------------"
-        ;;
-        
-    06|6)
-        clear
-        echo -e "\033[1;36m==================================================\033[0m"
-        echo -e "\033[1;32m                 LIST ALL MEMBERS                 \033[0m"
-        echo -e "\033[1;36m==================================================\033[0m"
-        if [ ! -f "$DB_JSON" ] || [ "$(jq 'keys | length' $DB_JSON 2>/dev/null)" -eq 0 ]; then
-            echo "Database Kosong."
-        else
-            printf "%-3s %-15s %-10s %-12s %-8s\n" "No" "Username" "Status" "Expired" "IP Lim"
-            echo -e "--------------------------------------------------"
-            mapfile -t users < <(jq -r 'keys[]' "$DB_JSON")
-            c=1
+        if [ ! -f "$DB_JSON" ] || [ "$(jq 'keys | length' $DB_JSON 2>/dev/null)" -eq 0 ]; then echo "Kosong."; else
+            printf "%-3s %-15s %-12s %-12s %-8s\n" "No" "Username" "Status" "Expired" "Limit IP"
+            echo "--------------------------------------------------"
+            mapfile -t users < <(jq -r 'keys[]' "$DB_JSON"); c=1
             for u in "${users[@]}"; do
                 st=$(jq -r --arg u "$u" '.[$u].status' "$DB_JSON")
                 ex=$(jq -r --arg u "$u" '.[$u].expired_date' "$DB_JSON")
                 ipl=$(jq -r --arg u "$u" '.[$u].limit_ip' "$DB_JSON")
-                printf "[%02d] %-15s %-10s %-12s %-8s\n" "$c" "$u" "$st" "$ex" "$ipl"
-                c=$((c+1))
+                if [[ "$st" == "ACTIVE" ]]; then st_col="\033[1;32m$st\033[0m"; else st_col="\033[1;31m$st\033[0m"; fi
+                printf "[%02d] %-15s %-21b %-12s %-8s\n" "$c" "$u" "$st_col" "$ex" "$ipl"; c=$((c+1))
             done
         fi
         ;;
         
-    07|7)
+    06|6)
         clear
-        echo -e "\033[1;36m==================================================\033[0m"
-        echo -e "\033[1;31m               CLEANING EXPIRED ACCOUNT           \033[0m"
-        echo -e "\033[1;36m==================================================\033[0m"
-        /usr/local/bin/mzivpn clean_exp
-        systemctl restart zivpn >/dev/null 2>&1
-        ;;
-        
-    08|8)
-        clear
-        echo -e "\033[1;36m==================================================\033[0m"
-        echo -e "\033[1;31m                 LOCK USER ACCOUNT                \033[0m"
-        echo -e "\033[1;36m==================================================\033[0m"
-        user_target=$(select_user_hybrid " ➜ Masukkan Nomor atau Nama Akun yang di-LOCK: ")
-        
-        if [[ "$user_target" == "EMPTY" ]]; then echo "❌ Database kosong."; exit 1; fi
-        if [[ "$user_target" == "NOT_FOUND" ]]; then echo "❌ Akun tidak ditemukan."; exit 1; fi
-        
-        /usr/local/bin/mzivpn lock "$user_target"
-        systemctl restart zivpn >/dev/null 2>&1
-        echo -e "\033[1;92m✔ Akun '$user_target' sukses di-BANNED / LOCKED!\033[0m"
-        ;;
-        
-    09|9)
-        clear
-        echo -e "\033[1;36m==================================================\033[0m"
-        echo -e "\033[1;32m                 UNLOCK USER ACCOUNT              \033[0m"
-        echo -e "\033[1;36m==================================================\033[0m"
-        user_target=$(select_user_hybrid " ➜ Masukkan Nomor atau Nama Akun yang di-UNLOCK: ")
-        
-        if [[ "$user_target" == "EMPTY" ]]; then echo "❌ Database kosong."; exit 1; fi
-        if [[ "$user_target" == "NOT_FOUND" ]]; then echo "❌ Akun tidak ditemukan."; exit 1; fi
-        
-        /usr/local/bin/mzivpn unlock "$user_target"
-        systemctl restart zivpn >/dev/null 2>&1
-        echo -e "\033[1;92m✔ Akun '$user_target' sukses di-OPEN / UNLOCKED!\033[0m"
-        ;;
-        
-    10)
-        clear
-        echo -e "\033[1;36m==================================================\033[0m"
-        echo -e "\033[1;31m               LIST ALL LOCKED MEMBERS            \033[0m"
-        echo -e "\033[1;36m==================================================\033[0m"
-        printf "%-3s %-15s %-10s %-12s\n" "No" "Username" "Status" "Expired"
-        echo -e "--------------------------------------------------"
-        mapfile -t users < <(jq -r 'keys[]' "$DB_JSON" 2>/dev/null)
-        c=1
-        for u in "${users[@]}"; do
-            st=$(jq -r --arg u "$u" '.[$u].status' "$DB_JSON")
-            if [[ "$st" == "LOCKED" ]]; then
-                ex=$(jq -r --arg u "$u" '.[$u].expired_date' "$DB_JSON")
-                printf "[%02d] %-15s %-10s %-12s\n" "$c" "$u" "$st" "$ex"
-                c=$((c+1))
-            fi
-        done
-        [ $c -eq 1 ] && echo "Tidak ada user yang terkunci."
-        ;;
-        
-    11)
-        clear
-        echo -e "\033[1;36m==================================================\033[0m"
-        echo -e "\033[1;33m                 DETAIL ACCOUNT INFO              \033[0m"
-        echo -e "\033[1;36m==================================================\033[0m"
-        user_target=$(select_user_hybrid " ➜ Masukkan Nomor atau Nama Akun untuk Cek Detail: ")
-        
-        if [[ "$user_target" == "EMPTY" ]]; then echo "❌ Database kosong."; exit 1; fi
-        if [[ "$user_target" == "NOT_FOUND" ]]; then echo "❌ Akun tidak ditemukan."; exit 1; fi
-        
-        clear
-        echo -e "➔ DETAIL DATA AKUN ZIVPN: \033[1;97m$user_target\033[0m"
-        echo -e "--------------------------------------------------"
+        user_target=$(select_user_hybrid " ➜ Detail User Nomor/Nama: ")
+        if [[ "$user_target" == "EMPTY" || "$user_target" == "NOT_FOUND" ]]; then exit 1; fi
         st=$(jq -r --arg u "$user_target" '.[$u].status' "$DB_JSON")
         ex=$(jq -r --arg u "$user_target" '.[$u].expired_date' "$DB_JSON")
         ipl=$(jq -r --arg u "$user_target" '.[$u].limit_ip' "$DB_JSON")
         uq=$(jq -r --arg u "$user_target" '.[$u].usage_quota' "$DB_JSON")
         lq=$(jq -r --arg u "$user_target" '.[$u].limit_quota' "$DB_JSON")
-        
-        echo -e " Status Akun  : $st"
-        echo -e " Expired Date : $ex"
-        echo -e " Limit MultiIP: $ipl IP"
-        echo -e " Quota Usage  : $(format_bytes $uq) / $(format_bytes $lq)"
-        echo -e "--------------------------------------------------"
+        if [[ "$st" == "ACTIVE" ]]; then st_col="\033[1;32m$st\033[0m"; else st_col="\033[1;31m$st\033[0m"; fi
+        echo "=================================================="
+        echo "  Username         : $user_target"
+        echo "  Status           : $st_col"
+        echo "  Expired          : $ex"
+        echo "  Limit Multi-IP   : $ipl IP"
+        echo "  Kuota Terpakai   : $(format_bytes $uq) / $(format_bytes $lq)"
+        echo "=================================================="
         ;;
         
-    12)
+    07)
         clear
-        echo -e "\033[1;36m==================================================\033[0m"
-        echo -e "\033[1;33m                 CHANGE LIMIT MULTI-IP            \033[0m"
-        echo -e "\033[1;36m==================================================\033[0m"
-        user_target=$(select_user_hybrid " ➜ Masukkan Nomor atau Nama Akun: ")
-        
-        if [[ "$user_target" == "EMPTY" ]]; then echo "❌ Database kosong."; exit 1; fi
-        if [[ "$user_target" == "NOT_FOUND" ]]; then echo "❌ Akun tidak ditemukan."; exit 1; fi
-        
-        read -p " ➜ Set Limit IP Baru (Angka): " new_ip
-        if [[ ! "$new_ip" =~ ^[0-9]+$ ]]; then echo "❌ Harus Angka!"; exit 1; fi
-        
+        user_target=$(select_user_hybrid " ➜ Pilih User: ")
+        read -p " ➜ Limit IP Baru: " new_ip
         /usr/local/bin/mzivpn ch_ip "$user_target" "$new_ip"
-        echo -e "\033[1;92m✔ Sukses merubah limit IP akun '$user_target' menjadi $new_ip IP!\033[0m"
         ;;
-        
-    13)
+    08)
         clear
-        echo -e "\033[1;36m==================================================\033[0m"
-        echo -e "\033[1;33m                 CHANGE LIMIT QUOTA DATA          \033[0m"
-        echo -e "\033[1;36m==================================================\033[0m"
-        user_target=$(select_user_hybrid " ➜ Masukkan Nomor atau Nama Akun: ")
-        
-        if [[ "$user_target" == "EMPTY" ]]; then echo "❌ Database kosong."; exit 1; fi
-        if [[ "$user_target" == "NOT_FOUND" ]]; then echo "❌ Akun tidak ditemukan."; exit 1; fi
-        
-        read -p " ➜ Set Total Kuota Baru (Dalam Satuan GB): " new_quota
-        if [[ ! "$new_quota" =~ ^[0-9]+$ ]]; then echo "❌ Harus Angka maseee!"; exit 1; fi
-        
+        user_target=$(select_user_hybrid " ➜ Pilih User: ")
+        read -p " ➜ Kuota Baru (GB): " new_quota
         /usr/local/bin/mzivpn ch_quota "$user_target" "$new_quota"
         systemctl restart zivpn >/dev/null 2>&1
-        echo -e "\033[1;92m✔ Sukses merubah total Limit Quota '$user_target' menjadi $new_quota GB!\033[0m"
         ;;
-        
+    09)
+        clear
+        user_target=$(select_user_hybrid " ➜ Lock User: ")
+        /usr/local/bin/mzivpn lock "$user_target"
+        systemctl restart zivpn >/dev/null 2>&1
+        ;;
+    10)
+        clear
+        user_target=$(select_user_hybrid " ➜ Unlock User: ")
+        /usr/local/bin/mzivpn unlock "$user_target"
+        systemctl restart zivpn >/dev/null 2>&1
+        ;;
+    11)
+        clear
+        /usr/local/bin/mzivpn clean_exp
+        systemctl restart zivpn >/dev/null 2>&1
+        ;;
+    12)
+        clear
+        systemctl status zivpn
+        ;;
     00|0)
-        echo "Keluar..."
         exit 0
         ;;
     *)
-        echo "❌ Pilihan tidak ada maseee!"
+        echo "❌ Salah input!"
         exit 1
         ;;
 esac

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # =========================================================
 # PREMIUM ZIVPN BACKEND ENGINE - HYBRID CORE V4
-# Location: /usr/local/bin/mzivpn
+# Location: zivpn.py (Simpan & upload ke GitHub maseee)
 # =========================================================
 
 import json
 import sys
 import os
 import tempfile
+import subprocess
 from datetime import datetime, timedelta
 
 CONF = "/etc/zivpn/config.json"
@@ -31,26 +32,64 @@ def save_json(path, data):
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
 
+def get_active_ip_count(username):
+    # Logika mendeteksi jumlah IP unik yang terkoneksi ke biner ZIVPN saat ini
+    # Menggunakan perintah netstat / ss untuk memfilter port listen ZIVPN (5667)
+    try:
+        cmd = "netstat -anp | grep :5667 | grep ESTABLISHED | awk '{print $5}' | cut -d: -f1 | sort -u | wc -l"
+        res = subprocess.check_output(cmd, shell=True).decode().strip()
+        return int(res) if res else 0
+    except:
+        return 0
+
 def sync():
     cfg = load_json(CONF)
     db = load_json(DB_JSON)
-    today = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now()
+    today_str = now.strftime("%Y-%m-%d")
     
     active_users = []
     changed = False
     
     for u, d in db.items():
-        # Auto lock jika melewati tanggal kadaluarsa
-        if d.get("expired_date") and d.get("expired_date") < today and d.get("status") == "ACTIVE":
+        status = d.get("status", "ACTIVE")
+        
+        # 1. Cek Unlock Otomatis untuk Akun Terkunci (Temporary Banned IP)
+        if status == "LOCKED" and d.get("lock_until"):
+            try:
+                unban_time = datetime.strptime(d["lock_until"], "%Y-%m-%d %H:%M:%S")
+                if now >= unban_time:
+                    d["status"] = "ACTIVE"
+                    d["lock_until"] = ""
+                    status = "ACTIVE"
+                    changed = True
+            except:
+                pass
+
+        # 2. Cek Batasan Kedaluwarsa (Expired Date)
+        if d.get("expired_date") and d.get("expired_date") < today_str and status == "ACTIVE":
             d["status"] = "EXPIRED"
+            status = "EXPIRED"
             changed = True
         
-        # Auto lock jika kuota habis
-        if d.get("limit_quota", 0) > 0 and d.get("usage_quota", 0) >= d.get("limit_quota", 0) and d.get("status") == "ACTIVE":
+        # 3. Cek Batasan Kuota Data (Jika Habis, Status diganti, TIDAK DIHAPUS)
+        if d.get("limit_quota", 0) > 0 and d.get("usage_quota", 0) >= d.get("limit_quota", 0) and status == "ACTIVE":
             d["status"] = "QUOTA_EXHAUSTED"
+            status = "QUOTA_EXHAUSTED"
             changed = True
             
-        if d.get("status") == "ACTIVE":
+        # 4. Cek Pelanggaran Multi-IP Aktif (Realtime Check)
+        if status == "ACTIVE":
+            current_login = get_active_ip_count(u)
+            limit_ip = d.get("limit_ip", 2)
+            if current_login > limit_ip:
+                # LANGKAH PROTEKSI: Kunci Akun Selama 2 Jam
+                d["status"] = "LOCKED"
+                d["lock_until"] = (now + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
+                status = "LOCKED"
+                changed = True
+                
+        if status == "ACTIVE":
             active_users.append(u)
             
     if changed:
@@ -73,17 +112,22 @@ def main():
     db = load_json(DB_JSON)
     today_dt = datetime.now()
     
-    if cmd == "add" and len(sys.argv) >= 4:
+    # Menambah Akun Premium Baru dengan Custom Multi-IP & Kuota Langsung
+    if cmd == "add" and len(sys.argv) >= 6:
         u = sys.argv[2].strip()
         days = int(sys.argv[3].strip())
+        limit_ip = int(sys.argv[4].strip())
+        quota_gb = int(sys.argv[5].strip())
+        
         exp_date = (today_dt + timedelta(days=days)).strftime("%Y-%m-%d")
         
         db[u] = {
-            "limit_ip": 2,
-            "limit_quota": 10737418240, # Default 10 GB
+            "limit_ip": limit_ip,
+            "limit_quota": quota_gb * 1024 * 1024 * 1024,
             "usage_quota": 0,
             "expired_date": exp_date,
-            "status": "ACTIVE"
+            "status": "ACTIVE",
+            "lock_until": ""
         }
         save_json(DB_JSON, db)
         sync()
@@ -99,8 +143,7 @@ def main():
         u = sys.argv[2].strip()
         days = int(sys.argv[3].strip())
         if u in db:
-            # Jika sudah expired/lock, perpanjang dari hari ini. Jika masih aktif, akumulasikan.
-            if db[u]["status"] != "ACTIVE":
+            if db[u]["status"] not in ["ACTIVE", "LOCKED"]:
                 base_dt = today_dt
             else:
                 try:
@@ -110,7 +153,8 @@ def main():
             
             db[u]["expired_date"] = (base_dt + timedelta(days=days)).strftime("%Y-%m-%d")
             db[u]["status"] = "ACTIVE"
-            db[u]["usage_quota"] = 0 # Reset kuota saat diperpanjang
+            db[u]["lock_until"] = ""
+            db[u]["usage_quota"] = 0
             save_json(DB_JSON, db)
             sync()
             
@@ -118,6 +162,7 @@ def main():
         u = sys.argv[2].strip()
         if u in db:
             db[u]["status"] = "LOCKED"
+            db[u]["lock_until"] = (today_dt + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
             save_json(DB_JSON, db)
             sync()
             
@@ -125,6 +170,7 @@ def main():
         u = sys.argv[2].strip()
         if u in db:
             db[u]["status"] = "ACTIVE"
+            db[u]["lock_until"] = ""
             save_json(DB_JSON, db)
             sync()
             
@@ -134,6 +180,7 @@ def main():
         if u in db:
             db[u]["limit_ip"] = limit
             save_json(DB_JSON, db)
+            sync()
             
     elif cmd == "ch_quota" and len(sys.argv) >= 4:
         u = sys.argv[2].strip()
@@ -150,7 +197,7 @@ def main():
             del db[u]
         save_json(DB_JSON, db)
         sync()
-        print(f"BERHASIL: {len(to_delete)} akun expired dibersihkan.")
+        print(f"BERHASIL: {len(to_delete)} akun mati dibersihkan.")
         
     elif cmd == "sync":
         sync()
