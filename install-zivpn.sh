@@ -102,3 +102,4 @@ echo -e "\033[1;92m==================================================\033[0m"
 echo -e "\033[1;97m    INSTALASI BERHASIL DIUNDUH DARI GITHUB!       \033[0m"
 echo -e "\033[1;92m    Akses Menu Utama Kapan Saja: m-zivpn          \033[0m"
 echo -e "\033[1;92m==================================================\033[0m"
+sed -i 's/\r$//' /usr/bin/m-zivpn
