@@ -1,10 +1,9 @@
 #!/bin/bash
 # =========================================================
 # AUTOMATIC SCRIPT SYSTEM INSTALLER FOR PREMIUM ZIVPN V4 HYBRID
-# Location: install-zivpn.sh (Simpan & upload ke GitHub maseee)
+# Location: /root/install-zivpn.sh
 # =========================================================
 
-# Menghubungkan otomatis ke repositori GitHub milik maseee
 GITHUB_USER="vermiliion"
 GITHUB_REPO="zivpn"
 BASE_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main"
@@ -33,7 +32,7 @@ chmod +x /usr/local/bin/zivpn
 echo "➜ Membuat file enkripsi sertifikat SSL..."
 openssl req -new -newkey rsa:4096 -days 365 -nodes -x509 -subj "/C=US/ST=California/L=Los Angeles/O=Example Corp/OU=IT Department/CN=zivpn" -keyout "/etc/zivpn/zivpn.key" -out "/etc/zivpn/zivpn.crt" 2>/dev/null
 
-# 5. Mengunduh File Konfigurasi & Script Pendukung Langsung Dari GitHub Maseee
+# 5. Mengunduh File Konfigurasi & Script Pendukung
 echo "➜ Mengunduh file konfigurasi utama (config.json)..."
 wget -qO /etc/zivpn/config.json "${BASE_URL}/config.json"
 
@@ -45,17 +44,17 @@ echo "➜ Mengunduh Script Menu Interactive (m-zivpn)..."
 wget -qO /usr/bin/m-zivpn "${BASE_URL}/m-zivpn"
 chmod +x /usr/bin/m-zivpn
 
-# 6. Membuat Script Auto-Lock & Auto-Clean Daemon (Cron Daemon Pemantau)
-echo "➜ Membuat Background Cron Daemon Pemantau..."
+# 6. Membuat Script Auto-Lock & Auto-Clean Daemon
+echo "➜ Membuat Background Cron Daemon Pemantau Kuota & IP..."
 cat << 'EOC' > /usr/bin/cron-zivpn
 #!/bin/bash
 /usr/local/bin/mzivpn sync >/dev/null 2>&1
 EOC
 chmod +x /usr/bin/cron-zivpn
 
-# Mendaftarkan ke Crontab untuk berjalan otomatis setiap 5 menit
+# Mendaftarkan ke Crontab untuk berjalan otomatis setiap 1 MENIT (Realtime Sync)
 crontab -l 2>/dev/null | grep -v "/usr/bin/cron-zivpn" | crontab -
-(crontab -l 2>/dev/null; echo "*/5 * * * * /usr/bin/cron-zivpn") | crontab -
+(crontab -l 2>/dev/null; echo "*/1 * * * * /usr/bin/cron-zivpn") | crontab -
 
 # 7. Membuat Systemd Service Sesuai Perintah Eksekusi Biner Asli
 echo "➜ Membuat Systemd Service daemon..."
@@ -98,9 +97,12 @@ systemctl restart zivpn >/dev/null 2>&1
 /usr/local/bin/mzivpn sync >/dev/null 2>&1
 hash -r
 
-echo -e "\033[1;92m==================================================\033[0m"
-echo -e "\033[1;97m    INSTALASI BERHASIL DIUNDUH DARI GITHUB!       \033[0m"
-echo -e "\033[1;92m    Akses Menu Utama Kapan Saja: m-zivpn          \033[0m"
-echo -e "\033[1;92m==================================================\033[0m"
+# Pembersihan sisa carriage return sistem Windows jika dipasang manual
 sed -i 's/\r$//' /usr/bin/m-zivpn
 sed -i 's/\r$//' /usr/local/bin/mzivpn
+sed -i 's/\r$//' /usr/bin/cron-zivpn
+
+echo -e "\033[1;92m==================================================\033[0m"
+echo -e "\033[1;97m    INSTALASI BERHASIL DIUNDUH & DISINKRONISASI!  \033[0m"
+echo -e "\033[1;92m    Akses Menu Utama Kapan Saja: m-zivpn          \033[0m"
+echo -e "\033[1;92m==================================================\033[0m"
