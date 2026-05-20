@@ -14,114 +14,74 @@ echo -e "\033[1;33m       MEMULAI INSTALASI MODULAR SYSTEM PREMIUM   \033[0m"
 echo -e "\033[1;36m==================================================\033[0m"
 
 # 1. Update Paket & Install Dependensi Utama
-echo "➜ Menginstal JQ dan Python3..."
-apt update -y && apt install jq python3 wget -y >/dev/null 2>&1
+echo "➜ Menginstal JQ, OpenSSL, dan Python3..."
+apt update -y && apt install jq python3 wget openssl iptables ufw -y >/dev/null 2>&1
 
-# 2. Pembuatan Folder Database & Pengunduhan File Konfigurasi Dasar
+# 2. Pembuatan Folder Kerja
 mkdir -p /etc/zivpn
 mkdir -p /etc/limit/zivpn
 [ ! -f "/etc/limit/zivpn/database.json" ] && echo "{}" > "/etc/limit/zivpn/database.json"
 
-echo "➜ Mengunduh file konfigurasi utama..."
-wget -qO- "${BASE_URL}/config.json" | tr -d '\r' > /etc/zivpn/config.json
+# 3. Mengunduh Biner Core Resmi Zahid Islam (AMD64)
+echo "➜ Mengunduh Core Binary ZIVPN..."
+systemctl stop zivpn 1> /dev/null 2> /dev/null
+wget -qO /usr/local/bin/zivpn https://github.com/zahidbd2/udp-zivpn/releases/download/udp-zivpn_1.4.9/udp-zivpn-linux-amd64
+chmod +x /usr/local/bin/zivpn
 
-# 3. Download Core Python Engine
+# 4. Membuat Sertifikat SSL Mandiri (Wajib bagi ZIVPN)
+echo "➜ Membuat file enkripsi sertifikat SSL..."
+openssl req -new -newkey rsa:4096 -days 365 -nodes -x509 -subj "/C=US/ST=California/L=Los Angeles/O=Example Corp/OU=IT Department/CN=zivpn" -keyout "/etc/zivpn/zivpn.key" -out "/etc/zivpn/zivpn.crt" 2>/dev/null
+
+# 5. Mengunduh File Konfigurasi Utama Langsung dari GitHub Maseee
+echo "➜ Mengunduh file konfigurasi utama dari cloud..."
+wget -qO /etc/zivpn/config.json "${BASE_URL}/config.json"
+
+# 6. Download Engine Python & Menu Tampilan Utama Bash
 echo "➜ Mengunduh Core Python Backend..."
 wget -qO- "${BASE_URL}/zivpn.py" | tr -d '\r' > /usr/local/bin/mzivpn
 chmod +x /usr/local/bin/mzivpn
 
-# 4. Download Menu Frontend
 echo "➜ Mengunduh Interactive Menu Manager..."
 wget -qO- "${BASE_URL}/m-zivpn" | tr -d '\r' > /usr/bin/m-zivpn
 chmod +x /usr/bin/m-zivpn
 
-# 5. Otomatisasi Pembuatan Systemd Service ZIVPN
-echo "➜ Membuat dan mendaftarkan zivpn.service ke Systemd..."
-# Mencari letak biner zivpn asli maseee di VPS (biasanya di /usr/bin/zivpn atau /usr/local/bin/zivpn)
-ZIVPN_BIN=$(which zivpn 2>/dev/null)
-if [ -z "$ZIVPN_BIN" ]; then
-    if [ -f "/usr/bin/zivpn" ]; then ZIVPN_BIN="/usr/bin/zivpn";
-    elif [ -f "/usr/local/bin/zivpn" ]; then ZIVPN_BIN="/usr/local/bin/zivpn";
-    else ZIVPN_BIN="/usr/bin/zivpn"; fi # fallback default
-fi
-
-cat << EOF > /etc/systemd/system/zivpn.service
+# 7. Membuat Systemd Service Sesuai Perintah Eksekusi Biner Asli
+cat << 'EOF' > /etc/systemd/system/zivpn.service
 [Unit]
-Description=ZIVPN UDP Premium Hybrid Engine Service
+Description=zivpn VPN Server Premium Modular
 After=network.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/etc/zivpn
-ExecStart=${ZIVPN_BIN} -c /etc/zivpn/config.json
+ExecStart=/usr/local/bin/zivpn server -c /etc/zivpn/config.json
 Restart=always
 RestartSec=3
-
-[Service]
-# Batasi log agar tidak memenuhi syslog VPS
-StandardOutput=syslog
-StandardError=syslog
-SyslogIdentifier=zivpn
+Environment=ZIVPN_LOG_LEVEL=info
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+NoNewPrivileges=true
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# Reload daemon dan aktifkan servicenya agar jalan otomatis saat VPS reboot
+# 8. Pengaturan Buffer Sistem, Firewall, & IPTables Routing UDP Range Port
+echo "➜ Mengonfigurasi Network Routing & Firewall..."
+sysctl -w net.core.rmem_max=16777216 > /dev/null 2>&1
+sysctl -w net.core.wmem_max=16777216 > /dev/null 2>&1
+
+NIC=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
+iptables -t nat -F PREROUTING 2>/dev/null
+iptables -t nat -A PREROUTING -i "$NIC" -p udp --dport 6000:19999 -j DNAT --to-destination :5667
+ufw allow 6000:19999/udp >/dev/null 2>&1
+ufw allow 5667/udp >/dev/null 2>&1
+
+# Menjalankan Layanan Core ZIVPN
 systemctl daemon-reload
 systemctl enable zivpn >/dev/null 2>&1
-systemctl start zivpn >/dev/null 2>&1
-
-# 6. Mendaftarkan Background Cron Daemon Pemantau IP Multi-Login
-echo "➜ Mengaktifkan Background Cron Auto-Lock Daemon..."
-cat << 'EOF' > /usr/bin/cron-zivpn
-#!/bin/bash
-DB_JSON="/etc/limit/zivpn/database.json"
-ZIVPN_LOG="/var/log/syslog"
-today=$(date +%Y-%m-%d)
-now=$(date +%s)
-
-[ ! -f "$DB_JSON" ] && exit 0
-
-for u in $(jq -r 'keys[]' "$DB_JSON" 2>/dev/null); do
-    local exp=$(jq -r --arg u "$u" '.[$u].expired_date' "$DB_JSON")
-    local lq=$(jq -r --arg u "$u" '.[$u].limit_quota' "$DB_JSON")
-    local uq=$(jq -r --arg u "$u" '.[$u].usage_quota' "$DB_JSON")
-    local stat=$(jq -r --arg u "$u" '.[$u].status' "$DB_JSON")
-    
-    if [[ "$today" > "$exp" || $uq -ge $lq ]]; then
-        /usr/local/bin/mzivpn del "$u"
-        continue
-    fi
-
-    if [[ "$stat" == "ACTIVE" ]]; then
-        local RAW_SNAPSHOT="/tmp/zivpn_cron_snap.log"
-        tail -n 20000 "$ZIVPN_LOG" > "$RAW_SNAPSHOT" 2>/dev/null
-        mapfile -t unique_ips < <(grep -w "$u" "$RAW_SNAPSHOT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | grep -v -E "127.0.0.1" | sort -u)
-        local live_ip=0
-        for ip in "${unique_ips[@]}"; do
-            local last_line=$(grep "$ip" "$RAW_SNAPSHOT" | grep -w "$u" | tail -n 1)
-            local timestamp_str=$(echo "$last_line" | awk '{print $1, $2, $3}')
-            local last_seen=$(date -d "$timestamp_str" +%s 2>/dev/null || echo 0)
-            if [[ "$last_seen" -ne 0 && $((now - last_seen)) -le 10 ]]; then ((live_ip++)); fi
-        done
-        rm -f "$RAW_SNAPSHOT"
-
-        local lip=$(jq -r --arg u "$u" '.[$u].limit_ip' "$DB_JSON")
-        if [[ "$live_ip" -gt "$lip" ]]; then
-            jq --arg u "$u" '.[$u].status = "LOCKED"' "$DB_JSON" > "${DB_JSON}.tmp" && mv "${DB_JSON}.tmp" "$DB_JSON"
-            /usr/local/bin/mzivpn del "$u"
-            systemctl restart zivpn >/dev/null 2>&1
-        fi
-    fi
-done
-EOF
-chmod +x /usr/bin/cron-zivpn
-
-if ! crontab -l 2>/dev/null | grep -q "/usr/bin/cron-zivpn"; then
-    (crontab -l 2>/dev/null; echo "* * * * * /usr/bin/cron-zivpn") | crontab -
-fi
+systemctl restart zivpn >/dev/null 2>&1
 
 echo -e "\033[1;92m==================================================\033[0m"
 echo -e "\033[1;97m    INSTALASI SELESAI, SYSTEM MODULAR BERJALAN!   \033[0m"

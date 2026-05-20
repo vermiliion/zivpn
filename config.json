@@ -1,11 +1,10 @@
 {
-  "description": "ZIVPN UDP Premium Configuration",
-  "server": {
-    "listen": "0.0.0.0:5666",
-    "protocol": "udp"
-  },
-  "auth": {
-    "type": "text",
-    "config": []
+  "listen": ":5667",
+   "cert": "/etc/zivpn/zivpn.crt",
+   "key": "/etc/zivpn/zivpn.key",
+   "obfs":"zivpn",
+   "auth": {
+    "mode": "passwords", 
+    "config": ["zi"]
   }
 }
