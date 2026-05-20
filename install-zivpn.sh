@@ -35,7 +35,45 @@ echo "➜ Mengunduh Interactive Menu Manager..."
 wget -qO- "${BASE_URL}/m-zivpn" | tr -d '\r' > /usr/bin/m-zivpn
 chmod +x /usr/bin/m-zivpn
 
-# 5. Mendaftarkan Background Cron Daemon Pemantau IP Multi-Login
+# 5. Otomatisasi Pembuatan Systemd Service ZIVPN
+echo "➜ Membuat dan mendaftarkan zivpn.service ke Systemd..."
+# Mencari letak biner zivpn asli maseee di VPS (biasanya di /usr/bin/zivpn atau /usr/local/bin/zivpn)
+ZIVPN_BIN=$(which zivpn 2>/dev/null)
+if [ -z "$ZIVPN_BIN" ]; then
+    if [ -f "/usr/bin/zivpn" ]; then ZIVPN_BIN="/usr/bin/zivpn";
+    elif [ -f "/usr/local/bin/zivpn" ]; then ZIVPN_BIN="/usr/local/bin/zivpn";
+    else ZIVPN_BIN="/usr/bin/zivpn"; fi # fallback default
+fi
+
+cat << EOF > /etc/systemd/system/zivpn.service
+[Unit]
+Description=ZIVPN UDP Premium Hybrid Engine Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/etc/zivpn
+ExecStart=${ZIVPN_BIN} -c /etc/zivpn/config.json
+Restart=always
+RestartSec=3
+
+[Service]
+# Batasi log agar tidak memenuhi syslog VPS
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=zivpn
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload daemon dan aktifkan servicenya agar jalan otomatis saat VPS reboot
+systemctl daemon-reload
+systemctl enable zivpn >/dev/null 2>&1
+systemctl start zivpn >/dev/null 2>&1
+
+# 6. Mendaftarkan Background Cron Daemon Pemantau IP Multi-Login
 echo "➜ Mengaktifkan Background Cron Auto-Lock Daemon..."
 cat << 'EOF' > /usr/bin/cron-zivpn
 #!/bin/bash
