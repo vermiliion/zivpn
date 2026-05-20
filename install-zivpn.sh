@@ -1,7 +1,7 @@
 #!/bin/bash
 # =========================================================
 # AUTOMATIC SCRIPT SYSTEM INSTALLER FOR PREMIUM ZIVPN V4
-# Location: /root/install.sh
+# Location: /root/install-zivpn.sh
 # =========================================================
 
 GITHUB_USER="vermiliion"
@@ -23,16 +23,16 @@ mkdir -p /etc/limit/zivpn
 [ ! -f "/etc/limit/zivpn/database.json" ] && echo "{}" > "/etc/limit/zivpn/database.json"
 
 echo "➜ Mengunduh file konfigurasi utama..."
-wget -qO /etc/zivpn/config.json "${BASE_URL}/config.json"
+wget -qO- "${BASE_URL}/config.json" | tr -d '\r' > /etc/zivpn/config.json
 
 # 3. Download Core Python Engine
 echo "➜ Mengunduh Core Python Backend..."
-wget -qO /usr/local/bin/mzivpn "${BASE_URL}/zivpn.py"
+wget -qO- "${BASE_URL}/zivpn.py" | tr -d '\r' > /usr/local/bin/mzivpn
 chmod +x /usr/local/bin/mzivpn
 
 # 4. Download Menu Frontend
 echo "➜ Mengunduh Interactive Menu Manager..."
-wget -qO /usr/bin/m-zivpn "${BASE_URL}/m-zivpn"
+wget -qO- "${BASE_URL}/m-zivpn" | tr -d '\r' > /usr/bin/m-zivpn
 chmod +x /usr/bin/m-zivpn
 
 # 5. Mendaftarkan Background Cron Daemon Pemantau IP Multi-Login
