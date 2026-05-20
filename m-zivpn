@@ -1,0 +1,220 @@
+#!/bin/bash
+# =========================================================
+# PREMIUM ZIVPN INTERACTIVE MENU (FULL DUAL-INPUT ENGINE)
+# Location: /usr/bin/m-zivpn
+# =========================================================
+
+CYAN='\033[96m'
+RED='\033[0;31m'
+NC='\033[0m'
+green='\033[0;32m'
+BIWhite='\033[1;97m'
+BIYellow='\033[1;93m'
+
+DB_JSON="/etc/limit/zivpn/database.json"
+ZIVPN_LOG="/var/log/syslog"
+
+con() {
+    local -i bytes=${1:-0}
+    if [[ $bytes -lt 1024 ]]; then echo "${bytes} B";
+    elif [[ $bytes -lt 1048576 ]]; then echo "$(( (bytes + 1023)/1024 )) KB";
+    elif [[ $bytes -lt 1073741824 ]]; then echo "$(( (bytes + 1048575)/1048576 )) MB";
+    else echo "$(( (bytes + 1073741823)/1073741824 )) GB"; fi
+}
+
+get_user_by_input() {
+    local input="$1"
+    if [[ "$input" =~ ^[0-9]+$ ]]; then
+        local target_user=$(jq -r "keys[$((input-1))]" "$DB_JSON" 2>/dev/null)
+        if [[ "$target_user" == "null" || -z "$target_user" ]]; then echo ""; else echo "$target_user"; fi
+    else
+        echo "$input"
+    fi
+}
+
+show_mini_table() {
+    echo -e "No.  Username     Limit IP    Usage / Limit Quota    Expired    Status"
+    echo "──────────────────────────────────────────────────────────────────────────"
+    local i=1
+    for u in $(jq -r 'keys[]' "$DB_JSON" 2>/dev/null); do
+        local lip=$(jq -r --arg u "$u" '.[$u].limit_ip' "$DB_JSON")
+        local lq=$(jq -r --arg u "$u" '.[$u].limit_quota' "$DB_JSON")
+        local uq=$(jq -r --arg u "$u" '.[$u].usage_quota' "$DB_JSON")
+        local exp=$(jq -r --arg u "$u" '.[$u].expired_date' "$DB_JSON")
+        local stat=$(jq -r --arg u "$u" '.[$u].status' "$DB_JSON")
+        printf "[%02d] %-12s %-11s %-22s %-10s %-10s\n" "$i" "$u" "$lip HP" "$(con $uq)/$(con $lq)" "$exp" "$stat"
+        local i=$((i+1))
+    done
+    echo "──────────────────────────────────────────────────────────────────────────"
+}
+
+function menu_zivpn() {
+    clear
+    echo -e "${BIWhite}──────────────────────────────────────${NC}"
+    echo -e "${BIYellow}         PREMIUM ZIVPN MANAGER        ${NC}"
+    echo -e "${BIWhite}──────────────────────────────────────${NC}"
+    echo -e " Engine : Hybrid Core Modular Version"
+    echo -e "${BIWhite}──────────────────────────────────────${NC}"
+    echo -e " [01] Buat Akun Premium (Add User)"
+    echo -e " [02] Hapus Akun (Delete User - Support No/Name)"
+    echo -e " [03] Perpanjang Akun (Renew - Support No/Name)"
+    echo -e " [04] Ubah Password Akun (Change Pass - Support No/Name)"
+    echo -e " ──────────────────────────────────────"
+    echo -e " [05] Ubah Limit IP HP (Support No/Name)"
+    echo -e " [06] Ubah Limit Quota Data (Support No/Name)"
+    echo -e " ──────────────────────────────────────"
+    echo -e " [07] LIVE MONITORING (Cek Login IP)"
+    echo -e " [08] Daftar Anggota (List Member)"
+    echo -e " [09] Buka Kunci Akun (Unlock User)"
+    echo -e "${BIWhite}──────────────────────────────────────${NC}"
+    read -p "Pilih Menu : " opt
+    
+    case $opt in
+        1)
+            clear
+            echo -e "${BIYellow}=== BUAT AKUN PREMIUM ZIVPN ===${NC}"
+            read -rp "➜ Username/Password Baru: " user
+            if [[ -z "$user" ]]; then echo -e "${RED}Gagal!${NC}"; sleep 1; menu_zivpn; fi
+            read -rp "➜ Limit IP (Contoh: 2): " lim_ip
+            [[ -z "$lim_ip" ]] && lim_ip="2"
+            read -rp "➜ Limit Kuota (Dalam GB, Contoh: 50): " lim_gb
+            [[ -z "$lim_gb" ]] && lim_gb="50"
+            read -rp "➜ Masa Aktif (Hari): " masa_aktif
+            [[ -z "$masa_aktif" ]] && masa_aktif="30"
+            
+            let quota_bytes=$lim_gb*1024*1024*1024
+            exp_date=$(date -d "$masa_aktif days" +"%Y-%m-%d")
+            
+            jq --arg u "$user" --arg ip "$lim_ip" --arg q "$quota_bytes" --arg exp "$exp_date" \
+            '.[$u] = {"limit_ip": ($ip|tonumber), "limit_quota": ($q|tonumber), "usage_quota": 0, "expired_date": $exp, "status": "ACTIVE"}' \
+            "$DB_JSON" > "${DB_JSON}.tmp" && mv "${DB_JSON}.tmp" "$DB_JSON"
+            
+            /usr/local/bin/mzivpn add "$user"
+            systemctl restart zivpn >/dev/null 2>&1
+            echo -e "${green}➜ Akun Sukses Dibuat!${NC}"; sleep 2; menu_zivpn
+            ;;
+        2)
+            clear
+            echo -e "${RED}=== HAPUS AKUN ZIVPN ===${NC}"
+            show_mini_table
+            read -rp "➜ Masukkan Nomor atau Nama Akun: " raw_input
+            user=$(get_user_by_input "$raw_input")
+            if [[ -z "$user" || "$(jq -r --arg u "$user" '.[$u]' "$DB_JSON")" == "null" ]]; then 
+                echo -e "${RED}User Tidak Valid!${NC}"; sleep 2; menu_zivpn
+            fi
+            /usr/local/bin/mzivpn del "$user"
+            systemctl restart zivpn >/dev/null 2>&1
+            echo -e "${green}➜ Akun $user sukses dihapus!${NC}"; sleep 2; menu_zivpn
+            ;;
+        3)
+            clear
+            echo -e "${BIYellow}=== PERPANJANG MASA AKTIF ===${NC}"
+            show_mini_table
+            read -rp "➜ Masukkan Nomor atau Nama Akun: " raw_input
+            user=$(get_user_by_input "$raw_input")
+            if [[ -z "$user" || "$(jq -r --arg u "$user" '.[$u]' "$DB_JSON")" == "null" ]]; then 
+                echo -e "${RED}User tidak ditemukan!${NC}"; sleep 2; menu_zivpn
+            fi
+            read -rp "➜ Tambah Berapa Hari: " hari
+            local current_exp=$(jq -r --arg u "$user" '.[$u].expired_date' "$DB_JSON")
+            local new_exp=$(date -d "$current_exp + $hari days" +"%Y-%m-%d")
+            jq --arg u "$user" --arg exp "$new_exp" '.[$u].expired_date = $exp | .[$u].status = "ACTIVE"' "$DB_JSON" > "${DB_JSON}.tmp" && mv "${DB_JSON}.tmp" "$DB_JSON"
+            /usr/local/bin/mzivpn add "$user"
+            systemctl restart zivpn >/dev/null 2>&1
+            echo -e "${green}➜ Masa aktif $user diperpanjang ke: $new_exp${NC}"; sleep 2; menu_zivpn
+            ;;
+        4)
+            clear
+            echo -e "${BIYellow}=== UBAH PASSWORD AKUN ZIVPN ===${NC}"
+            show_mini_table
+            read -rp "➜ Masukkan Nomor atau Nama Akun yang ingin diganti: " raw_input
+            user_lama=$(get_user_by_input "$raw_input")
+            if [[ -z "$user_lama" || "$(jq -r --arg u "$user_lama" '.[$u]' "$DB_JSON")" == "null" ]]; then 
+                echo -e "${RED}User tidak ditemukan!${NC}"; sleep 2; menu_zivpn
+            fi
+            read -rp "➜ Masukkan Password/Token BARU: " user_baru
+            if [[ -z "$user_baru" ]]; then echo -e "${RED}Password tidak boleh kosong!${NC}"; sleep 2; menu_zivpn; fi
+            jq --arg old "$user_lama" --arg new "$user_baru" '.[$new] = .[$old] | del(.[$old])' "$DB_JSON" > "${DB_JSON}.tmp" && mv "${DB_JSON}.tmp" "$DB_JSON"
+            /usr/local/bin/mzivpn del "$user_lama"
+            /usr/local/bin/mzivpn add "$user_baru"
+            systemctl restart zivpn >/dev/null 2>&1
+            echo -e "${green}➜ Sukses! Password baru disetel ke: [ $user_baru ]${NC}"; sleep 2; menu_zivpn
+            ;;
+        5)
+            clear
+            echo -e "${BIYellow}=== UBAH LIMIT IP USER ===${NC}"
+            show_mini_table
+            read -rp "➜ Masukkan Nomor atau Nama Akun: " raw_input
+            user=$(get_user_by_input "$raw_input")
+            if [[ -z "$user" || "$(jq -r --arg u "$user" '.[$u]' "$DB_JSON")" == "null" ]]; then 
+                echo -e "${RED}User tidak ditemukan!${NC}"; sleep 2; menu_zivpn
+            fi
+            read -rp "➜ Masukkan Limit IP HP Baru: " baru_ip
+            jq --arg u "$user" --arg ip "$baru_ip" '.[$u].limit_ip = ($ip|tonumber)' "$DB_JSON" > "${DB_JSON}.tmp" && mv "${DB_JSON}.tmp" "$DB_JSON"
+            echo -e "${green}➜ Limit IP $user berhasil diperbarui!${NC}"; sleep 2; menu_zivpn
+            ;;
+        6)
+            clear
+            echo -e "${BIYellow}=== UBAH LIMIT QUOTA USER ===${NC}"
+            show_mini_table
+            read -rp "➜ Masukkan Nomor atau Nama Akun: " raw_input
+            user=$(get_user_by_input "$raw_input")
+            if [[ -z "$user" || "$(jq -r --arg u "$user" '.[$u]' "$DB_JSON")" == "null" ]]; then 
+                echo -e "${RED}User tidak ditemukan!${NC}"; sleep 2; menu_zivpn
+            fi
+            read -rp "➜ Masukkan Kuota Baru (GB): " baru_gb
+            let baru_bytes=$baru_gb*1024*1024*1024
+            jq --arg u "$user" --arg q "$baru_bytes" '.[$u].limit_quota = ($q|tonumber)' "$DB_JSON" > "${DB_JSON}.tmp" && mv "${DB_JSON}.tmp" "$DB_JSON"
+            echo -e "${green}➜ Kuota $user diperbarui menjadi $baru_gb GB!${NC}"; sleep 2; menu_zivpn
+            ;;
+        7)
+            clear
+            echo -e "${BIYellow}=== LIVE MONITORING LOGIKA KONKURENSI ZIVPN ===${NC}"
+            echo -e "─────────────────────────────────────────────────────────────────"
+            local RAW_SNAPSHOT="/tmp/zivpn_snap.log"
+            tail -n 30000 "$ZIVPN_LOG" > "$RAW_SNAPSHOT" 2>/dev/null
+            local now=$(date +%s)
+            for u in $(jq -r 'keys[]' "$DB_JSON" 2>/dev/null); do
+                mapfile -t unique_ips < <(grep -w "$u" "$RAW_SNAPSHOT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | grep -v -E "127.0.0.1" | sort -u)
+                local live_ip=0
+                for ip in "${unique_ips[@]}"; do
+                    local last_line=$(grep "$ip" "$RAW_SNAPSHOT" | grep -w "$u" | tail -n 1)
+                    local timestamp_str=$(echo "$last_line" | awk '{print $1, $2, $3}')
+                    local last_seen=$(date -d "$timestamp_str" +%s 2>/dev/null || echo 0)
+                    if [[ "$last_seen" -ne 0 && $((now - last_seen)) -le 5 ]]; then ((live_ip++)); fi
+                done
+                local lip=$(jq -r --arg u "$u" '.[$u].limit_ip' "$DB_JSON")
+                local lq_bytes=$(jq -r --arg u "$u" '.[$u].limit_quota' "$DB_JSON")
+                local uq_bytes=$(jq -r --arg u "$u" '.[$u].usage_quota' "$DB_JSON")
+                local status=$(jq -r --arg u "$u" '.[$u].status' "$DB_JSON")
+                
+                printf "User        : %s\n" "$u"
+                printf "Kuota      : %s / %s\n" "$(con $uq_bytes)" "$(con $lq_bytes)"
+                printf "Limit IP   : %s IP\n" "$lip"
+                if [[ "$status" == "LOCKED" ]]; then printf "IP Aktif    : TERKUNCI (MELANGGAR IP!)\n"
+                elif [[ "$live_ip" -gt "$lip" ]]; then printf "IP Aktif    : %s IP (MULTI-LOGIN!)\n" "$live_ip"
+                else printf "IP Aktif    : %s IP\n" "$live_ip"
+                fi
+                echo "─────────────────────────────────────────────────────────────────"
+            done
+            rm -f "$RAW_SNAPSHOT"
+            read -n 1 -s -r -p "Tekan [ Enter ] untuk kembali"; menu_zivpn
+            ;;
+        8)
+            clear
+            show_mini_table
+            read -n 1 -s -r -p "Tekan [ Enter ]"; menu_zivpn
+            ;;
+        9)
+            clear
+            echo -e "${BIYellow}=== BUKA KUNCI USER (UNLOCK) ===${NC}"
+            read -rp "➜ Masukkan Nama Akun Terkunci: " user
+            jq --arg u "$user" '.[$u].status = "ACTIVE"' "$DB_JSON" > "${DB_JSON}.tmp" && mv "${DB_JSON}.tmp" "$DB_JSON"
+            /usr/local/bin/mzivpn add "$user"
+            systemctl restart zivpn >/dev/null 2>&1
+            echo -e "${green}➜ Akun $user aktif kembali!${NC}"; sleep 2; menu_zivpn
+            ;;
+        *) exit 0 ;;
+    esac
+}
+menu_zivpn

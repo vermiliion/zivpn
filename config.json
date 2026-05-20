@@ -1,0 +1,11 @@
+{
+  "description": "ZIVPN UDP Premium Configuration",
+  "server": {
+    "listen": "0.0.0.0:5666",
+    "protocol": "udp"
+  },
+  "auth": {
+    "type": "text",
+    "config": []
+  }
+}
