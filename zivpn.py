@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # =========================================================
 # PREMIUM ZIVPN BACKEND ENGINE - HYBRID CORE V4
-# Location: zivpn.py (Simpan & upload ke GitHub maseee)
+# Location: /usr/local/bin/mzivpn (Simpan & upload ke GitHub)
 # =========================================================
 
 import json
@@ -33,14 +33,19 @@ def save_json(path, data):
             os.unlink(tmp_path)
 
 def get_active_ip_count(username):
-    # Logika mendeteksi jumlah IP unik yang terkoneksi ke biner ZIVPN saat ini
-    # Menggunakan perintah netstat / ss untuk memfilter port listen ZIVPN (5667)
     try:
         cmd = "netstat -anp | grep :5667 | grep ESTABLISHED | awk '{print $5}' | cut -d: -f1 | sort -u | wc -l"
         res = subprocess.check_output(cmd, shell=True).decode().strip()
         return int(res) if res else 0
     except:
         return 0
+
+def format_bytes(bytes_val):
+    if bytes_val >= 1073741824:
+        return f"{bytes_val/1073741824:.2f} GB"
+    elif bytes_val >= 1048576:
+        return f"{bytes_val/1048576:.2f} MB"
+    return f"{bytes_val} Bytes"
 
 def sync():
     cfg = load_json(CONF)
@@ -54,7 +59,7 @@ def sync():
     for u, d in db.items():
         status = d.get("status", "ACTIVE")
         
-        # 1. Cek Unlock Otomatis untuk Akun Terkunci (Temporary Banned IP)
+        # Auto-Unlock Akun Terkunci jika Hukuman 2 Jam Habis
         if status == "LOCKED" and d.get("lock_until"):
             try:
                 unban_time = datetime.strptime(d["lock_until"], "%Y-%m-%d %H:%M:%S")
@@ -66,24 +71,23 @@ def sync():
             except:
                 pass
 
-        # 2. Cek Batasan Kedaluwarsa (Expired Date)
+        # Cek Expired Date
         if d.get("expired_date") and d.get("expired_date") < today_str and status == "ACTIVE":
             d["status"] = "EXPIRED"
             status = "EXPIRED"
             changed = True
         
-        # 3. Cek Batasan Kuota Data (Jika Habis, Status diganti, TIDAK DIHAPUS)
+        # Cek Kuota Data Habis
         if d.get("limit_quota", 0) > 0 and d.get("usage_quota", 0) >= d.get("limit_quota", 0) and status == "ACTIVE":
             d["status"] = "QUOTA_EXHAUSTED"
             status = "QUOTA_EXHAUSTED"
             changed = True
             
-        # 4. Cek Pelanggaran Multi-IP Aktif (Realtime Check)
+        # Proteksi Pelanggaran Limit IP (Auto Banned 2 Jam)
         if status == "ACTIVE":
             current_login = get_active_ip_count(u)
             limit_ip = d.get("limit_ip", 2)
             if current_login > limit_ip:
-                # LANGKAH PROTEKSI: Kunci Akun Selama 2 Jam
                 d["status"] = "LOCKED"
                 d["lock_until"] = (now + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
                 status = "LOCKED"
@@ -112,7 +116,6 @@ def main():
     db = load_json(DB_JSON)
     today_dt = datetime.now()
     
-    # Menambah Akun Premium Baru dengan Custom Multi-IP & Kuota Langsung
     if cmd == "add" and len(sys.argv) >= 6:
         u = sys.argv[2].strip()
         days = int(sys.argv[3].strip())
@@ -150,7 +153,6 @@ def main():
                     base_dt = datetime.strptime(db[u]["expired_date"], "%Y-%m-%d")
                 except:
                     base_dt = today_dt
-            
             db[u]["expired_date"] = (base_dt + timedelta(days=days)).strftime("%Y-%m-%d")
             db[u]["status"] = "ACTIVE"
             db[u]["lock_until"] = ""
@@ -199,6 +201,19 @@ def main():
         sync()
         print(f"BERHASIL: {len(to_delete)} akun mati dibersihkan.")
         
+    elif cmd == "list":
+        if not db:
+            print("Database member kosong.")
+            return
+        print("==========================================================================")
+        print(f"{'Username':<15} {'Status':<16} {'Expired':<12} {'Limit IP':<8} {'Kuota'}")
+        print("==========================================================================")
+        for u, d in db.items():
+            uq = format_bytes(d.get("usage_quota", 0))
+            lq = format_bytes(d.get("limit_quota", 0))
+            print(f"{u:<15} {d.get('status'):<16} {d.get('expired_date'):<12} {d.get('limit_ip'):<8} {uq}/{lq}")
+        print("==========================================================================")
+
     elif cmd == "sync":
         sync()
 
