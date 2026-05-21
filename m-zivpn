@@ -224,7 +224,8 @@ main_menu() {
                     else
                         user_display="${RED}Guest/Unknown${NC}"
                     fi
-                    printf " [%02d] | %-18s | %-28s\n" "$no" "$ip" "$user_display"
+                    # KUNCI PERBAIKAN: Menggunakan %b agar warna Bash di-render sempurna
+                    printf " [%02d] | %-18s | %-28b\n" "$no" "$ip" "$user_display"
                     no=$((no+1))
                 done
             fi
