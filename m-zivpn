@@ -7,7 +7,6 @@
 DB_JSON="/etc/limit/zivpn/database.json"
 BACKUP_DIR="/etc/limit/zivpn/backup"
 
-# Membuat folder backup jika belum ada
 mkdir -p "$BACKUP_DIR"
 
 # --- DEFINISI WARNA PREMIUM ---
@@ -18,7 +17,7 @@ BLUE='\033[1;34m'
 PURPLE='\033[1;35m'
 CYAN='\033[1;36m'
 LIGHT='\033[1;37m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 format_bytes() {
     local bytes=$1
@@ -35,7 +34,8 @@ format_bytes() {
 select_user_hybrid() {
     local prompt_msg=$1
     if [ ! -f "$DB_JSON" ] || [ "$(jq 'keys | length' $DB_JSON 2>/dev/null)" -eq 0 ]; then
-        echo "EMPTY"; return
+        echo "EMPTY"
+        return
     fi
     mapfile -t user_list < <(jq -r 'keys[]' "$DB_JSON" 2>/dev/null)
     
@@ -99,7 +99,6 @@ backup_restore_menu() {
                 echo -e "${RED}❌ Tidak ada file backup yang tersedia di $BACKUP_DIR${NC}"
                 return
             fi
-            
             echo -e "\nPilih file backup yang ingin dipulihkan:"
             for i in "${!backup_files[@]}"; do
                 echo -e " [${CYAN}$((i+1))${NC}] $(basename "${backup_files[$i]}")"
@@ -108,12 +107,10 @@ backup_restore_menu() {
             
             if [[ "$file_num" =~ ^[0-9]+$ ]] && [ "$file_num" -le "${#backup_files[@]}" ] && [ "$file_num" -gt 0 ]; then
                 local selected_backup="${backup_files[$((file_num-1))]}"
-                # Buat backup darurat database saat ini sebelum ditimpa
                 if [ -f "$DB_JSON" ]; then cp "$DB_JSON" "$DB_JSON.bak"; fi
-                
                 cp "$selected_backup" "$DB_JSON"
                 systemctl restart zivpn >/dev/null 2>&1
-                echo -e "${GREEN}✔ Sukses: Database berhasil di-restore ke kondisi file terpilih!${NC}"
+                echo -e "${GREEN}✔ Sukses: Database berhasil di-restore!${NC}"
             else
                 echo -e "${RED}❌ Pilihan tidak valid!${NC}"
             fi
@@ -150,9 +147,9 @@ main_menu() {
     echo -e " [${CYAN}11${NC}] Detail Account"
     echo -e " [${CYAN}12${NC}] Change Limit IP"
     echo -e " [${CYAN}13${NC}] Change Limit Quota"
-    echo -e " [${YELLOW}14${NC}] ${YELLOW}Backup & Restore Database${NC}"
+    echo -e " [${YELLOW}14${NC}] Backup & Restore Database${NC}"
     echo -e "${BLUE}──────────────────────────────────────${NC}"
-    echo -e " [${RED}00${NC}] ${RED}Keluar / Exit${NC}"
+    echo -e " [${RED}00${NC}] Keluar / Exit${NC}"
     echo -e "${BLUE}──────────────────────────────────────${NC}"
     read -p "Pilih Menu : " menu_choice
 
@@ -172,27 +169,19 @@ main_menu() {
             
             /usr/local/bin/mzivpn add "$username" "$masa_aktif" "$limit_ip" "$limit_gb"
             systemctl restart zivpn >/dev/null 2>&1
-            echo -e "${GREEN}✔ Sukses: User '$username' Aktif $masa_aktif Hari, Limit $limit_ip IP, Kuota $limit_gb GB!${NC}"
+            echo -e "${GREEN}✔ Sukses: User '$username' Berhasil Dibuat!${NC}"
             ;;
         02|2)
             clear
-            echo -e "${BLUE}==================================================${NC}"
-            echo -e "${PURPLE}          PROSES PEMBUATAN AKUN TRIAL             ${NC}"
-            echo -e "${BLUE}==================================================${NC}"
             trial_user="trial$(echo $RANDOM | cut -c1-3)"
-            
             /usr/local/bin/mzivpn add "$trial_user" "1" "2" "10"
             systemctl restart zivpn >/dev/null 2>&1
-            
             (
                 sleep 1800
                 /usr/local/bin/mzivpn del "$trial_user"
                 systemctl restart zivpn >/dev/null 2>&1
             ) &
-            
-            echo -e "${GREEN}✔ Sukses: Akun Trial '$trial_user' Berhasil Aktif!${NC}"
-            echo -e "${YELLOW}⚠ Sistem memantau akun ini. Otomatis hangus dalam 30 menit ke depan.${NC}"
-            echo -e "${BLUE}==================================================${NC}"
+            echo -e "${GREEN}✔ Sukses: Akun Trial '$trial_user' Berhasil Aktif 30 Menit!${NC}"
             ;;
         03|3)
             clear
@@ -203,7 +192,6 @@ main_menu() {
             systemctl restart zivpn >/dev/null 2>&1
             echo -e "${GREEN}✔ Akun berhasil diperpanjang!${NC}"
             ;;
-            
         04|4)
             clear
             user_target=$(select_user_hybrid " ➜ Pilih Akun yang akan Dihapus: ")
@@ -212,21 +200,16 @@ main_menu() {
             systemctl restart zivpn >/dev/null 2>&1
             echo -e "${GREEN}✔ Sukses dihapus total!${NC}"
             ;;
-            
-        06|6)
+        05|5)
             clear
             echo -e "${CYAN}──────────────────────────────────────────────────${NC}"
             echo -e "${YELLOW}         MONITORING GUEST & MEMBER LOG (UDP)      ${NC}"
             echo -e "${CYAN}──────────────────────────────────────────────────${NC}"
             printf "%-5s | %-18s | %-18s\n" "NO" "IP ADDRESS" "AKUN DETEKSI"
             echo -e "──────────────────────────────────────────────────"
-            
-            # 1. Ambil seluruh daftar user ACTIVE ke dalam array
+            python3 /etc/limit/zivpn/zivpn.py sync >/dev/null 2>&1
             mapfile -t v_users < <(jq -r 'to_entries[] | select(.value.status=="ACTIVE") | .key' /etc/limit/zivpn/database.json)
-            
-            # 2. Ambil seluruh IP unik dari log journalctl 1 jam terakhir
             mapfile -t active_ips < <(journalctl -u zivpn --since "1 hour ago" --no-pager | grep "client connected" | grep -Po '(?<="addr": ")[^"]*' | cut -d: -f1 | sort -u)
-            
             total_user=${#v_users[@]}
             no=1
             
@@ -235,14 +218,12 @@ main_menu() {
             else
                 for ip in "${active_ips[@]}"; do
                     if [ "$total_user" -gt 0 ]; then
-                        # Rumus modulus pintar agar index berputar melingkar
                         idx=$(( (no - 1) % total_user ))
                         user_match="${v_users[$idx]}"
                         user_display="${GREEN}$user_match${NC}"
                     else
                         user_display="${RED}Guest/Unknown${NC}"
                     fi
-                    
                     printf " [%02d] | %-18s | %-28s\n" "$no" "$ip" "$user_display"
                     no=$((no+1))
                 done
@@ -250,8 +231,6 @@ main_menu() {
             echo -e "${CYAN}──────────────────────────────────────────────────${NC}"
             echo -e " Total Jejak IP Aktif (1 Jam): ${YELLOW}$((no-1)) IP${NC}"
             echo -e "${CYAN}──────────────────────────────────────────────────${NC}"
-            echo -e "\nTekan [Enter] untuk kembali ke menu..."
-            read
             ;;
         06|6)
             clear
@@ -259,7 +238,6 @@ main_menu() {
             ;;
         07|7)
             clear
-            echo -e "${YELLOW}➜ Membersihkan akun expired & kuota habis...${NC}"
             /usr/local/bin/mzivpn clean_exp
             systemctl restart zivpn >/dev/null 2>&1
             echo -e "${GREEN}✔ Sukses membersihkan data expired.${NC}"
@@ -272,7 +250,6 @@ main_menu() {
             systemctl restart zivpn >/dev/null 2>&1
             echo -e "${GREEN}✔ Akun berhasil dikunci manual.${NC}"
             ;;
-            
         09|9)
             clear
             user_target=$(select_user_hybrid " ➜ Pilih Akun untuk di-Unlock: ")
@@ -281,7 +258,6 @@ main_menu() {
             systemctl restart zivpn >/dev/null 2>&1
             echo -e "${GREEN}✔ Akun berhasil dibuka kembali.${NC}"
             ;;
-            
         10)
             clear
             echo -e "${BLUE}==================================================${NC}"
@@ -305,7 +281,6 @@ main_menu() {
             lku=$(jq -r --arg u "$user_target" '.[$u].lock_until // ""' "$DB_JSON")
             
             if [[ "$st" == "ACTIVE" ]]; then st_col="${GREEN}$st${NC}"; else st_col="${RED}$st${NC}"; fi
-
             echo -e "${BLUE}==================================================${NC}"
             echo -e "  Username         : ${CYAN}$user_target${NC}"
             echo -e "  Status           : $st_col"
@@ -323,7 +298,6 @@ main_menu() {
             /usr/local/bin/mzivpn ch_ip "$user_target" "$new_ip"
             echo -e "${GREEN}✔ Limit IP berhasil diperbarui.${NC}"
             ;;
-            
         13)
             clear
             user_target=$(select_user_hybrid " ➜ Pilih User Ubah Kuota: ")
@@ -338,7 +312,7 @@ main_menu() {
             ;;
         00|0|x)
             echo -e "${GREEN}Keluar${NC}"
-            menu
+            exit 0
             ;;
         *)
             echo -e "${RED}❌ Salah input!${NC}"
@@ -349,7 +323,6 @@ main_menu() {
     read
 }
 
-# --- PERULANGAN OTOMATIS (Looping Engine) ---
 while true; do
     main_menu
 done
