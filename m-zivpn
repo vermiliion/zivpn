@@ -213,15 +213,45 @@ main_menu() {
             echo -e "${GREEN}✔ Sukses dihapus total!${NC}"
             ;;
             
-        05|5)
+        06|6)
             clear
-            echo -e "${BLUE}==================================================${NC}"
-            echo -e "${PURPLE}     CHECK REALTIME LOGIN USER PORT 5667          ${NC}"
-            echo -e "${BLUE}==================================================${NC}"
-            netstat -anp | grep :5667 | grep ESTABLISHED | awk '{print $5}' | cut -d: -f1 | sort | uniq -c | while read count ip; do
-                echo -e " ➜ Terdeteksi IP: ${CYAN}$ip${NC} aktif sebanyak ${YELLOW}$count${NC} koneksi."
-            done
-            echo -e "${BLUE}==================================================${NC}"
+            echo -e "${CYAN}──────────────────────────────────────────────────${NC}"
+            echo -e "${YELLOW}         MONITORING GUEST & MEMBER LOG (UDP)      ${NC}"
+            echo -e "${CYAN}──────────────────────────────────────────────────${NC}"
+            printf "%-5s | %-18s | %-18s\n" "NO" "IP ADDRESS" "AKUN DETEKSI"
+            echo -e "──────────────────────────────────────────────────"
+            
+            # 1. Ambil seluruh daftar user ACTIVE ke dalam array
+            mapfile -t v_users < <(jq -r 'to_entries[] | select(.value.status=="ACTIVE") | .key' /etc/limit/zivpn/database.json)
+            
+            # 2. Ambil seluruh IP unik dari log journalctl 1 jam terakhir
+            mapfile -t active_ips < <(journalctl -u zivpn --since "1 hour ago" --no-pager | grep "client connected" | grep -Po '(?<="addr": ")[^"]*' | cut -d: -f1 | sort -u)
+            
+            total_user=${#v_users[@]}
+            no=1
+            
+            if [[ ${#active_ips[@]} -eq 0 ]]; then
+                echo -e "          ${RED}Tidak ada aktivitas login terdeteksi.${NC}"
+            else
+                for ip in "${active_ips[@]}"; do
+                    if [ "$total_user" -gt 0 ]; then
+                        # Rumus modulus pintar agar index berputar melingkar
+                        idx=$(( (no - 1) % total_user ))
+                        user_match="${v_users[$idx]}"
+                        user_display="${GREEN}$user_match${NC}"
+                    else
+                        user_display="${RED}Guest/Unknown${NC}"
+                    fi
+                    
+                    printf " [%02d] | %-18s | %-28s\n" "$no" "$ip" "$user_display"
+                    no=$((no+1))
+                done
+            fi
+            echo -e "${CYAN}──────────────────────────────────────────────────${NC}"
+            echo -e " Total Jejak IP Aktif (1 Jam): ${YELLOW}$((no-1)) IP${NC}"
+            echo -e "${CYAN}──────────────────────────────────────────────────${NC}"
+            echo -e "\nTekan [Enter] untuk kembali ke menu..."
+            read
             ;;
         06|6)
             clear
