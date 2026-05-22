@@ -127,9 +127,31 @@ execute_bot_backup() {
     fi
 
     if [ -f "/root/backup_zivpn_${dateToday}.zip" ]; then
-        caption="⚡ *ZiVPN DATABASE BACKUP SUCCESS* ⚡\n\n📌 *IP VPS:* \`${MYIP}\`\n📅 *Tanggal:* \`${dateToday}\`\n📂 *Tipe:* \`ZiVPN Core Database (JSON Only)\`"
-        curl -F chat_id="${chatid}" -F document=@"/root/backup_zivpn_${dateToday}.zip" -F caption="$(echo -e "$caption")" -F parse_mode="Markdown" https://api.telegram.org/bot${token}/sendDocument >/dev/null 2>&1
-        echo -e "${GREEN}✔ Sukses: File backup ZiVPN berhasil dikirim ke Cloud Telegram Anda!${NC}"
+        echo -e "${YELLOW}Mengirim file backup dan mengekstrak File ID dari Telegram...${NC}"
+        
+        # 1. Kirim dokumen mentah ke Telegram terlebih dahulu untuk memicu pembuatan file_id oleh server
+        response=$(curl -s -F chat_id="${chatid}" -F document=@"/root/backup_zivpn_${dateToday}.zip" https://api.telegram.org/bot${token}/sendDocument)
+        
+        is_ok=$(echo "$response" | jq -r '.ok // false')
+        
+        if [ "$is_ok" = "true" ]; then
+            # 2. Ambil File ID unik dari response JSON Telegram
+            telegram_file_id=$(echo "$response" | jq -r '.result.document.file_id')
+            
+            # 3. KUNCI PERBAIKAN: Kirim pesan teks terpisah ke Telegram yang BERISI KODE FILE ID SIAP COPY!
+            caption_msg="⚡ *ZIVPN BACKUP SUCCESS* ⚡\n\n📌 *IP VPS:* \`${MYIP}\`\n📅 *Tanggal:* \`${dateToday}\`\n\n🔑 *KODE FILE ID UNTUK RESTORE:* \n\`$telegram_file_id\`\n\n_(Maseee tinggal sentuh/klik kode di atas di Telegram untuk auto-copy)_"
+            
+            curl -s -X POST "https://api.telegram.org/bot${token}/sendMessage" \
+                -d "chat_id=${chatid}" \
+                -d "text=$(echo -e "$caption_msg")" \
+                -d "parse_mode=Markdown" >/dev/null 2>&1
+                
+            echo -e "${GREEN}规 Sukses: File backup & Kunci File ID berhasil ditembak ke Telegram maseee!${NC}"
+            echo -e "Silakan cek room chat bot Telegram maseee sekarang."
+        else
+            echo -e "${RED}❌ Gagal mengirim ke Telegram. Tanggapan server:${NC}"
+            echo "$response" | jq -r '.description // "Unknown Error"'
+        fi
     else
         echo -e "${RED}❌ Gagal mengepack file zip backup!${NC}"
     fi
