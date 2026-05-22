@@ -1,11 +1,14 @@
 #!/bin/bash
 # =========================================================
 # PREMIUM INTERACTIVE INTERFACE MENU MANAGER V4 HYBRID
-# Location: /usr/bin/m-zivpn (Fully Unified Engine)
+# Location: /usr/bin/m-zivpn (The Unified Master Script)
+# Features: Real-time Monitor, Auto Quota & Cloud Backup Bot
 # =========================================================
 
 DB_JSON="/etc/limit/zivpn/database.json"
 BACKUP_DIR="/etc/limit/zivpn/backup"
+MYIP=$(curl -sS ipv4.icanhazip.com 2>/dev/null || wget -qO- icanhazip.com)
+dateToday=$(date +"%Y-%m-%d")
 
 mkdir -p "$BACKUP_DIR"
 
@@ -18,6 +21,12 @@ PURPLE='\033[1;35m'
 CYAN='\033[1;36m'
 LIGHT='\033[1;37m'
 NC='\033[0m'
+BIWhite='\033[1;97m'
+
+# Pastikan jq terinstall untuk parsing database json
+if ! command -v jq &> /dev/null; then
+    apt-get update && apt-get install -y jq >/dev/null 2>&1
+fi
 
 format_bytes() {
     local bytes=$1
@@ -70,67 +79,179 @@ select_user_hybrid() {
     fi
 }
 
-backup_restore_menu() {
+# =========================================================
+# INTERNAL BOT BACKEND FUNCTIONS (PINDAHAN DARI BACKUP-BOT)
+# =========================================================
+setup_bot_credentials() {
     clear
-    echo -e "${BLUE}==================================================${NC}"
-    echo -e "${PURPLE}         BACKUP & RESTORE DATABASE JSON           ${NC}"
-    echo -e "${BLUE}==================================================${NC}"
-    echo -e " [${CYAN}1${NC}] Backup Database Sekarang"
-    echo -e " [${CYAN}2${NC}] Restore dari File Backup"
-    echo -e " [${CYAN}3${NC}] Lihat Daftar File Backup"
-    echo -e " [${RED}0${NC}] Kembali ke Menu Utama"
-    echo -e "${BLUE}==================================================${NC}"
-    read -p "Pilih Aksi : " br_choice
-
-    case "$br_choice" in
-        1)
-            if [ ! -f "$DB_JSON" ]; then
-                echo -e "${RED}❌ Gagal: File database utama tidak ditemukan!${NC}"
-                return
-            fi
-            local file_name="zivpn_db_$(date +%Y%m%d_%H%M%S).json"
-            cp "$DB_JSON" "$BACKUP_DIR/$file_name"
-            echo -e "${GREEN}✔ Sukses: Database berhasil dicadangkan!${NC}"
-            echo -e "➜ File: ${YELLOW}$BACKUP_DIR/$file_name${NC}"
-            ;;
-        2)
-            mapfile -t backup_files < <(ls "$BACKUP_DIR"/*.json 2>/dev/null | sort -r)
-            if [ "${#backup_files[@]}" -eq 0 ]; then
-                echo -e "${RED}❌ Tidak ada file backup yang tersedia di $BACKUP_DIR${NC}"
-                return
-            fi
-            echo -e "\nPilih file backup yang ingin dipulihkan:"
-            for i in "${!backup_files[@]}"; do
-                echo -e " [${CYAN}$((i+1))${NC}] $(basename "${backup_files[$i]}")"
-            done
-            read -p "Masukkan nomor file: " file_num
-            
-            if [[ "$file_num" =~ ^[0-9]+$ ]] && [ "$file_num" -le "${#backup_files[@]}" ] && [ "$file_num" -gt 0 ]; then
-                local selected_backup="${backup_files[$((file_num-1))]}"
-                if [ -f "$DB_JSON" ]; then cp "$DB_JSON" "$DB_JSON.bak"; fi
-                cp "$selected_backup" "$DB_JSON"
-                systemctl restart zivpn >/dev/null 2>&1
-                echo -e "${GREEN}✔ Sukses: Database berhasil di-restore!${NC}"
-            else
-                echo -e "${RED}❌ Pilihan tidak valid!${NC}"
-            fi
-            ;;
-        3)
-            echo -e "\nDaftar File Backup di ${YELLOW}$BACKUP_DIR${NC}:"
-            echo -e "──────────────────────────────────────────────────"
-            ls -lh "$BACKUP_DIR"/*.json 2>/dev/null || echo -e "${RED}Kosong.${NC}"
-            echo -e "──────────────────────────────────────────────────"
-            ;;
-        0|*)
-            return
-            ;;
-    esac
+    switch=$(grep -i "switch" /root/.bckupbot 2>/dev/null | awk '{print $2}')
+    if [[ -z "$switch" ]]; then switch="off"; fi
+    echo "Pergi ke @BotFather dan ketik /newbot untuk membuat bot baru."
+    echo "Lalu ketik /my_id di @username_to_id_bot untuk mendapatkan Chat ID Anda."
+    echo -e "${BIWhite}──────────────────────────────────────${NC}"
+    read -p "Masukkan Token Bot Telegram : " token
+    read -p "Masukkan Chat ID Telegram   : " chatid
+    echo -e "${BIWhite}──────────────────────────────────────${NC}"
+    if [[ -z "$token" || -z "$chatid" ]]; then
+        echo -e "${RED}Gagal: Token atau Chat ID tidak boleh kosong!${NC}"
+        sleep 2
+        return
+    fi
+    echo "token $token" > /root/.bckupbot
+    echo "chatid $chatid" >> /root/.bckupbot
+    echo "switch $switch" >> /root/.bckupbot
+    echo -e "${GREEN}✔ Konfigurasi Bot Berhasil Disimpan!${NC}"
+    sleep 2
 }
 
+execute_bot_backup() {
+    if [[ ! -f /root/.bckupbot ]]; then
+        echo -e "${RED}Silakan setup kredensial bot terlebih dahulu di menu 5!${NC}"
+        sleep 2
+        return
+    fi
+    token=$(grep -i "token" /root/.bckupbot | awk '{print $2}')
+    chatid=$(grep -i "chatid" /root/.bckupbot | awk '{print $2}')
+    
+    echo -e "${CYAN}Memulai proses kompresi database ZiVPN...${NC}"
+    rm -rf /root/backup_zivpn* >/dev/null 2>&1
+    
+    # Hanya mem-backup direktori ZiVPN spesifik skripsi
+    if [ -d "/etc/limit/zivpn" ]; then
+        cd /etc/limit/
+        zip -r /root/backup_zivpn_${dateToday}.zip zivpn/ >/dev/null 2>&1
+    else
+        echo -e "${RED}Folder database /etc/limit/zivpn tidak ditemukan!${NC}"
+        sleep 2
+        return
+    fi
+
+    if [ -f "/root/backup_zivpn_${dateToday}.zip" ]; then
+        caption="⚡ *ZiVPN DATABASE BACKUP SUCCESS* ⚡\n\n📌 *IP VPS:* \`${MYIP}\`\n📅 *Tanggal:* \`${dateToday}\`\n📂 *Tipe:* \`ZiVPN Core Database (JSON Only)\`"
+        curl -F chat_id="${chatid}" -F document=@"/root/backup_zivpn_${dateToday}.zip" -F caption="$(echo -e "$caption")" -F parse_mode="Markdown" https://api.telegram.org/bot${token}/sendDocument >/dev/null 2>&1
+        echo -e "${GREEN}✔ Sukses: File backup ZiVPN berhasil dikirim ke Cloud Telegram Anda!${NC}"
+    else
+        echo -e "${RED}❌ Gagal mengepack file zip backup!${NC}"
+    fi
+    rm -rf /root/backup_zivpn* >/dev/null 2>&1
+    echo -e "\nTekan [Enter] untuk kembali..."
+    read
+}
+
+execute_bot_restore() {
+    if [[ ! -f /root/.bckupbot ]]; then
+        echo -e "${RED}Silakan setup kredensial bot terlebih dahulu di menu 5!${NC}"
+        sleep 2
+        return
+    fi
+    token=$(grep -i "token" /root/.bckupbot | awk '{print $2}')
+    
+    echo -e "${YELLOW}Untuk melakukan restore, silakan kirim/upload file backup (.zip)${NC}"
+    echo -e "${YELLOW}ke Chat Bot Telegram Anda, lalu salin 'File ID'-nya di sini.${NC}"
+    echo -e "${BIWhite}──────────────────────────────────────${NC}"
+    read -p "Masukkan File ID dari Telegram: " file_id
+    echo -e "${BIWhite}──────────────────────────────────────${NC}"
+    
+    if [ -z "$file_id" ]; then
+        echo -e "${RED}File ID kosong, pembatalan restore.${NC}"
+        sleep 2
+        return
+    fi
+
+    echo -e "${CYAN}Mengunduh file backup maseee dari server Telegram...${NC}"
+    file_path=$(curl -s "https://api.telegram.org/bot${token}/getFile?file_id=${file_id}" | jq -r '.result.file_path')
+    
+    if [[ "$file_path" == "null" || -z "$file_path" ]]; then
+        echo -e "${RED}❌ File ID salah, kadaluarsa, atau tidak sah!${NC}"
+        sleep 2
+        return
+    fi
+
+    wget -q -O /root/restore_zivpn.zip "https://api.telegram.org/file/bot${token}/${file_path}"
+
+    if [ -f "/root/restore_zivpn.zip" ]; then
+        echo -e "${CYAN}Mengekstrak data dan menimpa database ZiVPN lama...${NC}"
+        mkdir -p /etc/limit/
+        unzip -o /root/restore_zivpn.zip -d /etc/limit/ >/dev/null 2>&1
+        rm -f /root/restore_zivpn.zip
+        systemctl restart zivpn >/dev/null 2>&1
+        echo -e "${GREEN}✔ SUKSES: Database ZiVPN Berhasil Dipulihkan (Restored)!${NC}"
+    else
+        echo -e "${RED}❌ Gagal mengunduh file restore dari Telegram.${NC}"
+    fi
+    echo -e "\nTekan [Enter] untuk kembali..."
+    read
+}
+
+start_autobot() {
+    sed -i 's/switch.*/switch on/g' /root/.bckupbot 2>/dev/null
+    (crontab -l 2>/dev/null | grep -v "m-zivpn --cron-backup"; echo "0 */5 * * * /usr/bin/m-zivpn --cron-backup >/dev/null 2>&1") | crontab -
+    echo -e "${GREEN}✔ Autobackup ZiVPN aktif (Berjalan Otomatis Setiap 5 Jam ke Telegram)!${NC}"
+    sleep 2
+}
+
+stop_autobot() {
+    sed -i 's/switch.*/switch off/g' /root/.bckupbot 2>/dev/null
+    crontab -l 2>/dev/null | grep -v "m-zivpn --cron-backup" | crontab -
+    echo -e "${RED}❌ Autobackup ZiVPN dinonaktifkan.${NC}"
+    sleep 2
+}
+
+backup_restore_menu() {
+    while true; do
+        clear
+        [[ ! -f /root/.bckupbot ]] && echo -e "token null\nchatid null\nswitch off" > /root/.bckupbot
+        sts=$(grep -i "switch" /root/.bckupbot | awk '{print $2}')
+        if [[ "$sts" == "on" ]]; then sts="${GREEN}ON (Setiap 5 Jam)${NC}"; else sts="${RED}OFF${NC}" ; fi
+        
+        echo -e "${BLUE}──────────────────────────────────────${NC}"
+        echo -e "${PURPLE}       ZiVPN BOT CLOUD BACKUP MANAGER   ${NC}"
+        echo -e "${BLUE}──────────────────────────────────────${NC}"
+        echo -e " Status Autobackup Bot : ${sts}"    
+        echo -e " [${CYAN}01${NC}] Start Autobackup Tiap 5 Jam"
+        echo -e " [${CYAN}02${NC}] Stop Autobackup Otomatis"
+        echo -e " [${CYAN}03${NC}] Backup ZiVPN Sekarang (Kirim ke Telegram)"
+        echo -e " [${CYAN}04${NC}] Restore ZiVPN via File ID Telegram"
+        echo -e " [${CYAN}05${NC}] Setup Kredensial Bot Telegram"
+        echo -e "${BLUE}──────────────────────────────────────${NC}"
+        echo -e " [${RED}00${NC}] Kembali ke Menu Utama Panel${NC}"
+        echo -e "${BLUE}──────────────────────────────────────${NC}"
+        read -p "Pilih Menu Backup : " b_opt
+        case $b_opt in    
+            1|01) start_autobot ;;
+            2|02) stop_autobot ;;
+            3|03) execute_bot_backup ;;
+            4|04) execute_bot_restore ;;
+            5|05) setup_bot_credentials ;;
+            0|00|x) return ;;
+            *) echo -e "${RED}Pilihan salah!${NC}" ; sleep 1 ;;
+        esac
+    done
+}
+
+# Handler jika dipanggil secara silent oleh cronjob autobackup
+if [[ "$1" == "--cron-backup" ]]; then
+    if [[ -f /root/.bckupbot ]]; then
+        token=$(grep -i "token" /root/.bckupbot | awk '{print $2}')
+        chatid=$(grep -i "chatid" /root/.bckupbot | awk '{print $2}')
+        if [[ -d "/etc/limit/zivpn" && ! -z "$token" && ! -z "$chatid" ]]; then
+            cd /etc/limit/
+            zip -r /root/backup_zivpn_${dateToday}.zip zivpn/ >/dev/null 2>&1
+            caption="⏰ *AUTOMATIC SCRIPT BACKUP SUCCESS* ⏰\n\n📌 *IP VPS:* \`${MYIP}\`\n📅 *Tanggal:* \`${dateToday}\`\n📂 *Status:* \`Cronjob Aktif (5 Jam-an)\`"
+            curl -F chat_id="${chatid}" -F document=@"/root/backup_zivpn_${dateToday}.zip" -F caption="$(echo -e "$caption")" -F parse_mode="Markdown" https://api.telegram.org/bot${token}/sendDocument >/dev/null 2>&1
+            rm -rf /root/backup_zivpn* >/dev/null 2>&1
+        fi
+    fi
+    exit 0
+fi
+
+# =========================================================
+# MAIN USER INTERFACE LOOP
+# =========================================================
 main_menu() {
     clear
     echo -e "${BLUE}──────────────────────────────────────${NC}"
-    echo -e "${PURPLE}            ZIVPN MANAGER        ${NC}"
+    echo -e "${PURPLE}            ZIVPN MANAGER (MASTER CORE)        ${NC}"
     echo -e "${BLUE}──────────────────────────────────────${NC}"
     echo -e " [${CYAN}01${NC}] Create Account"
     echo -e " [${CYAN}02${NC}] Trial Account (30 Minutes)"
@@ -147,7 +268,7 @@ main_menu() {
     echo -e " [${CYAN}11${NC}] Detail Account"
     echo -e " [${CYAN}12${NC}] Change Limit IP"
     echo -e " [${CYAN}13${NC}] Change Limit Quota"
-    echo -e " [${YELLOW}14${NC}] Backup & Restore Database${NC}"
+    echo -e " [${YELLOW}14${NC}] Cloud Backup & Restore Bot Telegram${NC}"
     echo -e "${BLUE}──────────────────────────────────────${NC}"
     echo -e " [${RED}00${NC}] Keluar / Exit${NC}"
     echo -e "${BLUE}──────────────────────────────────────${NC}"
@@ -224,7 +345,7 @@ main_menu() {
                     else
                         user_display="${RED}Guest/Unknown${NC}"
                     fi
-                    # KUNCI PERBAIKAN: Menggunakan %b agar warna Bash di-render sempurna
+                    # FORMAT %b UNTUK MENCEGAH KODE WARNA BOCOR DI TERMINAL
                     printf " [%02d] | %-18s | %-28b\n" "$no" "$ip" "$user_display"
                     no=$((no+1))
                 done
@@ -309,14 +430,15 @@ main_menu() {
             echo -e "${GREEN}✔ Limit Kuota berhasil diperbarui.${NC}"
             ;;
         14)
+            # MEMANGGIL SKRIP BACKUP INTERNAL YANG SUDAH MENYATU
             backup_restore_menu
             ;;
         00|0|x)
-            echo -e "${GREEN}Keluar${NC}"
+            echo -e "${GREEN}Keluar Panel Utama. Terima kasih maseee!${NC}"
             exit 0
             ;;
         *)
-            echo -e "${RED}❌ Salah input!${NC}"
+            echo -e "${RED}❌ Input salah!${NC}"
             ;;
     esac
 
