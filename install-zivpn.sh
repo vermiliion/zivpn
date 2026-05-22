@@ -102,6 +102,8 @@ sed -i 's/\r$//' /usr/bin/m-zivpn
 sed -i 's/\r$//' /usr/local/bin/mzivpn
 sed -i 's/\r$//' /usr/bin/cron-zivpn
 
+(crontab -l 2>/dev/null; echo "* * * * * python3 /etc/limit/zivpn/zivpn.py sync >/dev/null 2>&1") | crontab -
+
 echo -e "\033[1;92m==================================================\033[0m"
 echo -e "\033[1;97m    INSTALASI BERHASIL DIUNDUH & DISINKRONISASI!  \033[0m"
 echo -e "\033[1;92m    Akses Menu Utama Kapan Saja: m-zivpn          \033[0m"
