@@ -106,7 +106,7 @@ setup_bot_credentials() {
 
 execute_bot_backup() {
     if [[ ! -f /root/.bckupbot ]]; then
-        echo -e "${RED}Silakan setup kredensial bot terlebih dahulu di menu 5!${NC}"
+        echo -e "${RED}setup atau atur bot token terlebih dahulu di menu 5!${NC}"
         sleep 2
         return
     fi
@@ -162,7 +162,7 @@ execute_bot_backup() {
 
 execute_bot_restore() {
     if [[ ! -f /root/.bckupbot ]]; then
-        echo -e "${RED}Silakan setup kredensial bot terlebih dahulu di menu 5!${NC}"
+        echo -e "${RED}Silakan setup atau atur bot token terlebih dahulu di menu 5!${NC}"
         sleep 2
         return
     fi
@@ -196,6 +196,8 @@ execute_bot_restore() {
         mkdir -p /etc/limit/
         unzip -o /root/restore_zivpn.zip -d /etc/limit/ >/dev/null 2>&1
         rm -f /root/restore_zivpn.zip
+        sleep 2
+        systemctl restart zivpn >/dev/null 2>&1
         systemctl restart zivpn >/dev/null 2>&1
         echo -e "${GREEN}✔ SUKSES: Database ZiVPN Berhasil Dipulihkan (Restored)!${NC}"
     else
@@ -234,7 +236,7 @@ backup_restore_menu() {
         echo -e " [${CYAN}02${NC}] Stop Autobackup Otomatis"
         echo -e " [${CYAN}03${NC}] Backup ZiVPN Sekarang (Kirim ke Telegram)"
         echo -e " [${CYAN}04${NC}] Restore ZiVPN via File ID Telegram"
-        echo -e " [${CYAN}05${NC}] Setup Kredensial Bot Telegram"
+        echo -e " [${CYAN}05${NC}] Setup atau atur Bot token Telegram"
         echo -e "${BLUE}──────────────────────────────────────${NC}"
         echo -e " [${RED}00${NC}] Kembali ke Menu Utama Panel${NC}"
         echo -e "${BLUE}──────────────────────────────────────${NC}"
@@ -273,7 +275,7 @@ fi
 main_menu() {
     clear
     echo -e "${BLUE}──────────────────────────────────────${NC}"
-    echo -e "${PURPLE}            ZIVPN MANAGER (MASTER CORE)        ${NC}"
+    echo -e "${PURPLE}         ZIVPN MANAGER (MASTER CORE)        ${NC}"
     echo -e "${BLUE}──────────────────────────────────────${NC}"
     echo -e " [${CYAN}01${NC}] Create Account"
     echo -e " [${CYAN}02${NC}] Trial Account (30 Minutes)"
@@ -290,7 +292,7 @@ main_menu() {
     echo -e " [${CYAN}11${NC}] Detail Account"
     echo -e " [${CYAN}12${NC}] Change Limit IP"
     echo -e " [${CYAN}13${NC}] Change Limit Quota"
-    echo -e " [${YELLOW}14${NC}] Cloud Backup & Restore Bot Telegram${NC}"
+    echo -e " [${YELLOW}14${NC}] Backup & Restore Bot Telegram${NC}"
     echo -e "${BLUE}──────────────────────────────────────${NC}"
     echo -e " [${RED}00${NC}] Keluar / Exit${NC}"
     echo -e "${BLUE}──────────────────────────────────────${NC}"
